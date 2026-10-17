@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
-import { spacing, radii, brand, type Theme } from '../theme/tokens';
+import { spacing, radii, type Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_BODY, FONT_HEAD, FONT_EDITORIAL } from '../theme/fonts';
 import { KeepsakeStamp } from './Illustrations';
 import type { Memory } from '../domain/types';

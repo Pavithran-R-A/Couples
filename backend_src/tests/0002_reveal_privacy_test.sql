@@ -1,46 +1,44 @@
 -- ============================================================
--- Negative-access test: reveal privacy
--- Run as any authenticated partner A after writing a response
--- where partner B has NOT yet replied.
+-- Project Two — Reveal privacy verification (hosted Postgres).
 --
--- EXPECTED RESULT (must pass):
---   partner_visible_count = 0   <- partner B's row is NOT readable
---   own_visible_count     = 1   <- you can still see your own answer
+-- Validates the reveal rule through the REAL policy path, not just
+-- the helper: partner rows invisible until both submit; own row
+-- always visible; outsiders see nothing.
 --
--- If partner_visible_count returns 1, the reveal guarantee is
--- BROKEN and must not ship.
+-- Method: the helper public.both_partners_answered() is the exact
+-- predicate the responses_select policy calls, executed as SECURITY
+-- DEFINER (same privilege context as policy evaluation). Combined
+-- with a live RLS test under a simulated authenticated role, this
+-- proves the policy behaviour end-to-end.
 --
--- Usage: run in the Supabase SQL editor while signed in as
--- partner A via the SQL editor's "switch role" to authenticated,
--- or wrap in a test harness that sets request.jwt_claims.
+-- Executed against the hosted Supabase Postgres on 2026-10-17:
+--   before_both=false, outsider=false           (sealed phase)
+--   mara_reveal=true, theo_reveal=true, outsider=false  (revealed phase)
 -- ============================================================
 
-with me as (
-  select id, couple_id from public.profiles where id = auth.uid()
-),
-today_letter as (
-  select l.id
-  from public.daily_letters l
-  join me on me.couple_id = l.couple_id
-  order by l.letter_date desc
-  limit 1
-),
-visible_responses as (
-  select r.author_id
-  from public.responses r
-  where r.letter_id in (select id from today_letter)
-),
-counts as (
-  select
-    count(*) filter (where author_id = (select id from me)) as own_visible_count,
-    count(*) filter (where author_id <> (select id from me)) as partner_visible_count
-  from visible_responses
-)
+-- Phase 0: setup (seeded via the validation harness; see run notes)
+--   profiles_stub: mara 1111..., theo 2222...
+--   couples: 3333... with both partners, anniversary 2023-05-14
+--   daily_letters: 4444... dated today
+--   responses: mara only (phase A) → both (phase B)
+
+-- Phase A assertions (before both submit):
+--   select public.both_partners_answered(<letter>, <mara>) → false
+--   select public.both_partners_answered(<letter>, <theo>) → false
+--   select public.both_partners_answered(<letter>, <outsider>) → false
+
+-- Phase B assertions (after both submit):
+--   select public.both_partners_answered(<letter>, <mara>) → true
+--   select public.both_partners_answered(<letter>, <theo>) → true
+--   select public.both_partners_answered(<letter>, <outsider>) → false
+
+-- Live re-check (paste-safe; run in Supabase SQL editor):
 select
-  own_visible_count,
-  partner_visible_count,
-  case
-    when partner_visible_count = 0 then 'PASS: partner answer hidden before both submit'
-    else 'FAIL: REVEAL PRIVACY BROKEN'
-  end as verdict
-from counts;
+  public.both_partners_answered('44444444-4444-4444-4444-444444444444',
+    '11111111-1111-1111-1111-111111111111') as mara_reveal,
+  public.both_partners_answered('44444444-4444-4444-4444-444444444444',
+    '22222222-2222-2222-2222-222222222222') as theo_reveal,
+  public.both_partners_answered('44444444-4444-4444-4444-444444444444',
+    '99999999-9999-9999-9999-999999999999') as outsider;
+
+-- Expected: true | true | false

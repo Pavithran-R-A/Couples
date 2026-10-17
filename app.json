@@ -7,11 +7,6 @@
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "projecttwo",
-    "splash": {
-      "image": "./assets/images/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F6F0E6"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -32,7 +27,14 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F6F0E6"
+        }
+      ],
       "expo-status-bar"
     ],
     "experiments": {

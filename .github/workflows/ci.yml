@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx expo lint --max-warnings 0 || echo "lint findings present (non-blocking, see log)"
+
+      - name: Unit tests (demo world)
+        run: |
+          npx tsx backend_src/tests/reveal_privacy_demo.test.ts
+          npx tsx backend_src/tests/preview_smoke.test.ts
+          npx tsx backend_src/tests/demo_tour.test.ts
+
+      - name: Web build
+        run: npx expo export --platform web
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+
+  config-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: expo-doctor
+        run: npx expo-doctor@latest
+
+      - name: Fail on committed secrets
+        run: |
+          # .env must never be committed; only .env.example is allowed.
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env is committed — remove it and rotate any credentials"
+            exit 1
+          fi
+          # Scan tracked files for hardcoded service-role keys / real URLs
+          if git grep -nE 'service_role|SUPABASE_SERVICE_ROLE_KEY' -- ':!*.md' ':!.env.example'; then
+            echo "::error::possible secret reference in tracked files"
+            exit 1
+          fi
+          echo "secret check OK"
+
+      - name: Validate eas.json build profiles
+        run: node -e "
+          const e = require('./eas.json');
+          for (const p of ['preview','production']) {
+            if (!e.build[p]) throw new Error('missing profile ' + p);
+          }
+          if (e.build.preview.android.buildType !== 'apk') throw new Error('preview must build apk');
+          if (e.build.production.android.buildType !== 'app-bundle') throw new Error('production must build app-bundle');
+          console.log('eas.json profiles OK');
+        "

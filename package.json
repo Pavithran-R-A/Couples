@@ -8,6 +8,9 @@
     "build:web": "expo export --platform web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "doctor": "npx expo-doctor@latest",
+    "verify": "npm run typecheck && npm run test:privacy && npm run test:smoke && npm run test:tour",
+    "setup": "bash scripts/setup.sh",
     "test:privacy": "tsx backend_src/tests/reveal_privacy_demo.test.ts",
     "test:smoke": "tsx backend_src/tests/preview_smoke.test.ts",
     "test:tour": "tsx backend_src/tests/demo_tour.test.ts"
@@ -18,7 +21,7 @@
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@lucide/lab": "^0.1.2",
-    "@react-native-async-storage/async-storage": "^3.1.1",
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@supabase/supabase-js": "^2.58.0",

@@ -126,18 +126,37 @@ create index if not exists memories_couple_idx on public.memories(couple_id, mem
 -- ---------- helpers ----------
 
 create or replace function public.is_couple_member(p_couple uuid, p_user uuid)
-returns boolean language sql stable security definer set search_path = public as $
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.couples c
     where c.id = p_couple and (c.partner_a_id = p_user or c.partner_b_id = p_user)
   );
-$;
+$$;
 
 -- The caller's own couple id, resolved without reading profiles under RLS
 -- (avoids recursive policy evaluation on the profiles table).
 create or replace function public.my_couple_id()
-returns uuid language sql stable security definer set search_path = public as $
+returns uuid language sql stable security definer set search_path = public as $$
   select couple_id from public.profiles where id = auth.uid();
+$$;
+
+-- Reveal condition, evaluated as definer so the responses policy never
+-- reads the responses table under its own RLS (which would recurse).
+create or replace function public.both_partners_answered(p_letter uuid, p_user uuid)
+returns boolean language sql stable security definer set search_path = public as $
+  select (
+    select count(distinct author_id) = 2
+    from public.responses
+    where letter_id = p_letter
+      and author_id in (
+        p_user,
+        (select case when c.partner_a_id = p_user then c.partner_b_id else c.partner_a_id end
+         from public.profiles p
+         join public.couples c on c.id = p.couple_id
+         where p.id = p_user
+           and p_user in (c.partner_a_id, c.partner_b_id))
+      )
+  );
 $;
 
 -- ---------- row level security ----------
@@ -161,8 +180,8 @@ create policy profiles_select on public.profiles for select to authenticated
 
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles for update to authenticated
-  using (id = auth.uid() and couple_id = public.my_couple_id())
-  with check (id = auth.uid() and couple_id = public.my_couple_id());
+  using (id = auth.uid() and (couple_id = public.my_couple_id() or couple_id is null))
+  with check (id = auth.uid() and (couple_id = public.my_couple_id() or couple_id is null));
 
 drop policy if exists profiles_insert_own on public.profiles;
 create policy profiles_insert_own on public.profiles for insert to authenticated
@@ -205,14 +224,9 @@ create policy responses_select on public.responses for select to authenticated
   using (
     author_id = auth.uid()
     or (
-      exists (
-        select 1
-        from public.responses mine
-        join public.responses theirs
-          on theirs.letter_id = mine.letter_id
-         and theirs.author_id <> mine.author_id
-        where mine.letter_id = responses.letter_id
-          and mine.author_id = auth.uid()
+      public.both_partners_answered(
+        responses.letter_id,
+        auth.uid()
       )
       and public.is_couple_member(
         (select couple_id from public.daily_letters l where l.id = responses.letter_id),
@@ -602,7 +616,7 @@ begin
   delete from auth.users where id = me;
   return true;
 end;
-$;
+$$;
 
 -- ---------- function access ----------
 -- Every SECURITY DEFINER function is a public endpoint by default in
@@ -611,6 +625,7 @@ $;
 
 revoke execute on function public.is_couple_member(uuid, uuid) from public, anon;
 revoke execute on function public.my_couple_id() from public, anon;
+revoke execute on function public.both_partners_answered(uuid, uuid) from public, anon;
 revoke execute on function public.create_my_invitation() from public, anon;
 revoke execute on function public.join_couple_with_code(text) from public, anon;
 revoke execute on function public.unlink_partner() from public, anon;
@@ -622,6 +637,7 @@ revoke execute on function public.delete_my_account() from public, anon;
 
 grant execute on function public.is_couple_member(uuid, uuid) to authenticated;
 grant execute on function public.my_couple_id() to authenticated;
+grant execute on function public.both_partners_answered(uuid, uuid) to authenticated;
 grant execute on function public.create_my_invitation() to authenticated;
 grant execute on function public.join_couple_with_code(text) to authenticated;
 grant execute on function public.unlink_partner() to authenticated;

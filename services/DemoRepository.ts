@@ -11,6 +11,7 @@ import type {
   ReactionKind,
   LetterResponse,
   Invitation,
+  PocketNote,
 } from '../domain/types';
 import type { BackendAdapter } from './BackendAdapter';
 import { QUESTIONS, questionForIndex } from '../domain/questions';
@@ -38,6 +39,7 @@ interface DemoData {
   memories: Memory[];
   milestones: Milestone[];
   moods: MoodCheckIn[];
+  pocketNotes: PocketNote[];
   seeded: boolean;
 }
 
@@ -54,6 +56,7 @@ function freshData(): DemoData {
     memories: [],
     milestones: [],
     moods: [],
+    pocketNotes: [],
     seeded: false,
   };
 }
@@ -138,6 +141,16 @@ export class DemoRepository implements BackendAdapter {
     this.data.memories = [
       { id: 'demo-mem-1', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, title: 'Rainy rooftop dinner', note: 'We cooked under the tarp and the rain kept perfect time.', photoUri: null, memoryDate: '2026-09-12', createdAt: new Date().toISOString() },
       { id: 'demo-mem-2', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, title: 'The lighthouse walk', note: 'Wind, salt, and one very determined seagull.', photoUri: null, memoryDate: '2026-08-03', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-3', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, title: 'The bakery argument', note: 'Over the last cardamom bun. Settled by splitting it.', photoUri: null, memoryDate: '2026-07-19', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-4', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, title: 'Two train tickets, one destination', note: 'We boarded the wrong train and found a better town.', photoUri: null, memoryDate: '2026-06-02', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-5', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, title: 'The blanket fort winter', note: 'Fairy lights, cocoa, and a film we half watched.', photoUri: null, memoryDate: '2026-01-21', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-6', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, title: 'Dawn on the pier', note: 'You fell asleep on my shoulder on the way back.', photoUri: null, memoryDate: '2025-08-30', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-7', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, title: 'The plant we almost killed', note: 'Basil came back from one leaf. A role model, really.', photoUri: null, memoryDate: '2025-05-11', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-8', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, title: 'Kitchen dance, no music', note: 'The radio was broken. We managed anyway.', photoUri: null, memoryDate: '2025-03-08', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-9', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, title: 'First apartment keys', note: 'Two keys, one tiny lift, endless stairs.', photoUri: null, memoryDate: '2024-10-05', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-10', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, title: 'The night market', note: 'You bargained for a lamp neither of us needed.', photoUri: null, memoryDate: '2024-07-14', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-11', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, title: 'Lake day, zero plans', note: 'Cold water, warm towels, very bad sandwiches.', photoUri: null, memoryDate: '2024-06-22', createdAt: new Date().toISOString() },
+      { id: 'demo-mem-12', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, title: 'Where it all began', note: 'A borrowed book, returned three weeks late.', photoUri: null, memoryDate: '2023-05-14', createdAt: new Date().toISOString() },
     ];
     // A few past letters so history feels lived-in.
     const pastDays = [1, 2, 3, 4];
@@ -156,6 +169,12 @@ export class DemoRepository implements BackendAdapter {
     this.data.milestones = [
       { id: 'demo-ms-1', coupleId: 'demo-couple', kind: 'first_letter', achievedAt: new Date(Date.now() - 5 * 86400000).toISOString(), label: 'First letter opened' },
       { id: 'demo-ms-2', coupleId: 'demo-couple', kind: 'letters_10', achievedAt: new Date().toISOString(), label: 'Ten letters answered' },
+      { id: 'demo-ms-3', coupleId: 'demo-couple', kind: 'first_memory', achievedAt: new Date(Date.now() - 30 * 86400000).toISOString(), label: 'First keepsake pressed' },
+      { id: 'demo-ms-4', coupleId: 'demo-couple', kind: 'anniversary', achievedAt: this.data.couple!.anniversary + 'T09:00:00.000Z', label: 'The day we met, three years ago' },
+    ];
+    this.data.pocketNotes = [
+      { id: 'demo-note-1', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, body: 'Left the last cardamom bun for you. Evidence withheld.', createdAt: new Date(Date.now() - 3 * 3600000).toISOString(), readAt: null },
+      { id: 'demo-note-2', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, body: 'The basil says hello. It grew a whole new leaf overnight.', createdAt: new Date(Date.now() - 26 * 3600000).toISOString(), readAt: DEMO_PARTNERS.a.id ? new Date(Date.now() - 25 * 3600000).toISOString() : null },
     ];
     await this.save();
   }
@@ -427,6 +446,32 @@ export class DemoRepository implements BackendAdapter {
     if (!me?.coupleId) throw new Error('You need to be in a couple to check in');
     this.data.moods.push({ id: `mood-${Date.now()}`, coupleId: me.coupleId, authorId: me.id, emoji, note, createdAt: new Date().toISOString() });
     await this.save();
+  }
+
+  async getPocketNotes(): Promise<PocketNote[]> {
+    await this.load();
+    const me = await this.getMyProfile();
+    if (!me?.coupleId) return [];
+    return this.data.pocketNotes
+      .filter((n) => n.coupleId === me.coupleId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async sendPocketNote(body: string): Promise<PocketNote> {
+    await this.load();
+    const me = await this.getMyProfile();
+    if (!me?.coupleId) throw new Error('You need to be in a couple to send notes');
+    const note: PocketNote = {
+      id: `note-${Date.now()}`,
+      coupleId: me.coupleId,
+      authorId: me.id,
+      body,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+    };
+    this.data.pocketNotes.push(note);
+    await this.save();
+    return note;
   }
 
   async exportData(): Promise<Record<string, unknown>> {

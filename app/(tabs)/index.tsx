@@ -23,6 +23,7 @@ import {
 } from '@/theme/fonts';
 import { EngravedDivider, WaxSeal } from '@/components/Ornaments';
 import { EnvelopeArt, FlowerSprig, KeepsakeStamp, Constellation, GardenGround } from '@/components/Illustrations';
+import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
 import { ReactionRow } from '@/components/ReactionRow';
 import type { LetterResponse, Reaction } from '@/domain/types';
 
@@ -30,6 +31,7 @@ export default function LettersTab() {
   const { backend, session, mode } = useApp();
   const theme = useTheme();
   const router = useRouter();
+  const isDemo = mode === 'demo';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -119,6 +121,7 @@ export default function LettersTab() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.accent} />}
         >
           {/* living-world header */}
+          <PerspectiveSwitcher />
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>
@@ -215,6 +218,11 @@ export default function LettersTab() {
               <Text style={[styles.waitingText, { color: theme.inkSoft }]}>
                 Your answer is tucked away. The envelope opens only when you have both written.
               </Text>
+              {isDemo && (
+                <Text style={[styles.demoHint, { color: theme.gold, fontFamily: FONT_EDITORIAL, fontSize: 15.5 }]}>
+                  Try it: switch to Theo below and write the second answer.
+                </Text>
+              )}
             </View>
           )}
 
@@ -331,6 +339,7 @@ const styles = StyleSheet.create({
   },
   waitingTitle: { fontFamily: FONT_HEAD, fontSize: 19 },
   waitingText: { fontFamily: FONT_BODY, fontSize: 14.5, lineHeight: 22, textAlign: 'center' },
+  demoHint: { textAlign: 'center', marginTop: 2 },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',

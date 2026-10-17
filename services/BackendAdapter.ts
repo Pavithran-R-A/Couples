@@ -11,6 +11,7 @@ import type {
   ReactionKind,
   LetterResponse,
   Invitation,
+  PocketNote,
 } from '../domain/types';
 
 export interface BackendAdapter {
@@ -53,6 +54,10 @@ export interface BackendAdapter {
   getMilestones(): Promise<Milestone[]>;
   getMoodCheckIns(): Promise<MoodCheckIn[]>;
   addMoodCheckIn(emoji: string, note: string): Promise<void>;
+
+  // Pocket notes (affectionate short notes between partners)
+  getPocketNotes(): Promise<PocketNote[]>;
+  sendPocketNote(body: string): Promise<PocketNote>;
 
   // Settings
   exportData(): Promise<Record<string, unknown>>;

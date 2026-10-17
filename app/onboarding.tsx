@@ -22,6 +22,8 @@ import {
   FONT_EDITORIAL,
 } from '@/theme/fonts';
 import { CelestialGarden, EnvelopeArt, Constellation, KeepsakeStamp, FlowerSprig } from '@/components/Illustrations';
+import { EntrySequence } from '@/components/EntrySequence';
+import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
 
 const INTRO_LINES = [
   'A little world for just you two.',
@@ -40,6 +42,7 @@ export default function Onboarding() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showTour, setShowTour] = useState(true);
 
   const { width: screenW } = Dimensions.get('window');
   const heroH = Math.min(300, Math.max(230, screenW * 0.62));
@@ -94,6 +97,15 @@ export default function Onboarding() {
     }
   };
 
+  if (showTour && tab === 'welcome') {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <EntrySequence onDone={() => setShowTour(false)} />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -122,6 +134,12 @@ export default function Onboarding() {
         </View>
 
         <View style={[styles.body, { backgroundColor: theme.bg }]}>
+          {tab === 'welcome' && mode !== 'demo' && <View style={{ marginTop: -radii.xl }} />}
+          {tab === 'welcome' && (
+            <Text style={[styles.tourHint, { color: theme.inkFaint }]}>
+              Tour again anytime · sound off · motion adapts to your settings
+            </Text>
+          )}
           {backendNotice ? (
             <View style={[styles.noticeBox, { backgroundColor: theme.goldSoft, borderColor: theme.gold }]}>
               <Text style={[styles.noticeText, { color: theme.ink }]}>{backendNotice}</Text>
@@ -330,6 +348,15 @@ const styles = StyleSheet.create({
   demoCta: { fontFamily: FONT_BOLD, fontSize: 13.5, marginTop: 4 },
   demoStamp: { alignSelf: 'flex-start' },
   demoNote: { fontFamily: FONT_BODY, fontSize: 12.5, textAlign: 'center', marginTop: spacing.xl },
+  tourHint: {
+    fontFamily: FONT_MEDIUM,
+    fontSize: 11.5,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginTop: -spacing.md,
+    marginBottom: spacing.md,
+  },
   formTitle: { fontFamily: FONT_HEAD, fontSize: 30, lineHeight: 38, marginTop: spacing.md },
   formSub: { marginTop: 4 },
 });

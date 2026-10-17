@@ -11,6 +11,7 @@ import type {
   Memory,
   Milestone,
   MoodCheckIn,
+  PocketNote,
 } from '../domain/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BackendAdapter } from './BackendAdapter';
@@ -411,6 +412,16 @@ export class SupabaseRepository implements BackendAdapter {
       .from('mood_check_ins')
       .insert({ couple_id: me.coupleId, author_id: me.id, emoji, note });
     if (error) throw error;
+  }
+
+  // Pocket notes are a demo-world concept for now; production has no table
+  // yet, so these return an empty set / no-op rather than touching data.
+  async getPocketNotes(): Promise<PocketNote[]> {
+    return [];
+  }
+
+  async sendPocketNote(_body: string): Promise<PocketNote> {
+    throw new Error('Pocket notes are coming soon.');
   }
 
   async exportData(): Promise<Record<string, unknown>> {

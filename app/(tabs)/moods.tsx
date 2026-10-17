@@ -8,7 +8,8 @@ import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC, FONT_BOLD, FONT_MEDIUM, FONT_ED
 import { EngravedDivider } from '@/components/Ornaments';
 import { MemoryCard } from '@/components/MemoryCard';
 import { FlowerSprig, KeepsakeStamp, Constellation, Ribbon } from '@/components/Illustrations';
-import type { Memory, Milestone, MoodCheckIn } from '@/domain/types';
+import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
+import type { Memory, Milestone, MoodCheckIn, PocketNote } from '@/domain/types';
 
 const MOODS = ['☀️', '🌙', '🌿', '🔥', '☁️', '☕️'];
 
@@ -18,6 +19,10 @@ export default function MoodsTab() {
   const [moods, setMoods] = useState<MoodCheckIn[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [notes, setNotes] = useState<PocketNote[]>([]);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [me, setMe] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [checkInEmoji, setCheckInEmoji] = useState<string | null>(null);
@@ -32,14 +37,18 @@ export default function MoodsTab() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const [m, mem, ms] = await Promise.all([
+      const [m, mem, ms, pn, prof] = await Promise.all([
         backend.getMoodCheckIns(),
         backend.getMemories(),
         backend.getMilestones(),
+        backend.getPocketNotes(),
+        backend.getMyProfile(),
       ]);
       setMoods(m);
       setMemories(mem);
       setMilestones(ms);
+      setNotes(pn);
+      setMe(prof?.id ?? '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load your shared world');
     } finally {
@@ -91,6 +100,20 @@ export default function MoodsTab() {
     }
   };
 
+  const sendNote = async () => {
+    if (!noteDraft.trim()) return;
+    setNoteBusy(true);
+    try {
+      await backend.sendPocketNote(noteDraft.trim());
+      setNoteDraft('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send that note');
+    } finally {
+      setNoteBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: theme.bg }]}>
@@ -113,6 +136,55 @@ export default function MoodsTab() {
           </View>
 
           <ErrorNote theme={theme}>{error}</ErrorNote>
+
+          <PerspectiveSwitcher />
+
+          {/* pocket notes — small surprise messages */}
+          <Card theme={theme} style={{ marginBottom: spacing.xl, borderColor: theme.gold }}>
+            <SectionLabel theme={theme} color={theme.gold}>
+              Pocket notes
+            </SectionLabel>
+            <Text style={[styles.moodHint, { color: theme.inkFaint }]}>
+              Tiny surprise messages. Write one here and read it from your partner's perspective.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TextInput
+                value={noteDraft}
+                onChangeText={setNoteDraft}
+                placeholder="Slip a note into their pocket…"
+                placeholderTextColor={theme.inkFaint}
+                style={[styles.noteInput, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.ink, flex: 1 }]}
+                maxLength={140}
+                onSubmitEditing={sendNote}
+              />
+              <Button label="Send" onPress={sendNote} loading={noteBusy} disabled={!noteDraft.trim()} theme={theme} />
+            </View>
+            {notes.length > 0 && (
+              <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
+                {notes.slice(0, 8).map((n) => {
+                  const mine = n.authorId === me;
+                  return (
+                    <View
+                      key={n.id}
+                      style={[
+                        styles.pocketNote,
+                        {
+                          backgroundColor: theme.goldSoft,
+                          borderColor: theme.gold,
+                          alignSelf: mine ? 'flex-end' : 'flex-start',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.pocketNoteText, { color: theme.ink }]}>{n.body}</Text>
+                      <Text style={[styles.pocketNoteWhen, { color: theme.inkFaint }]}>
+                        {new Date(n.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </Card>
 
           {/* mood check-in */}
           <Card theme={theme} tone="soft" style={{ marginBottom: spacing.xl }}>
@@ -342,4 +414,13 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BODY,
   },
   dateHint: { fontFamily: FONT_BOLD, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5 },
+  pocketNote: {
+    maxWidth: '85%',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    padding: spacing.md,
+    gap: 4,
+  },
+  pocketNoteText: { fontFamily: FONT_BODY, fontSize: 14, lineHeight: 20 },
+  pocketNoteWhen: { fontFamily: FONT_BODY, fontSize: 10.5 },
 });

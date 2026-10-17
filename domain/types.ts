@@ -115,6 +115,17 @@ export interface Invitation {
   consumed: boolean;
 }
 
+// Pocket notes: short affectionate notes between partners. A demo-world
+// concept; the production adapter currently returns an empty set.
+export interface PocketNote {
+  id: string;
+  coupleId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
 export interface Question {
   id: string;
   text: string;

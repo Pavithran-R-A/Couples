@@ -216,13 +216,15 @@ export default function SettingsTab() {
           {mode === 'demo' && (
             <Card theme={theme} tone="soft" style={{ marginBottom: spacing.lg, borderColor: theme.gold }}>
               <SectionLabel theme={theme} color={theme.gold}>
-                Demonstration mode
+                Demonstration tour
               </SectionLabel>
               <Text style={[styles.note, { color: theme.inkSoft }]}>
-                You are exploring Project Two with fictional partners and synthetic data.
+                Everything you see is a fictional world for Mara and Theo — no accounts, no real data.
+                You can leave the tour whenever you like.
               </Text>
-              <View style={{ marginTop: spacing.md }}>
-                <Button label="Reset demo data" variant="ghost" onPress={resetDemo} theme={theme} />
+              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+                <Button label="Exit tour — create a real account" onPress={() => router.replace('/onboarding')} theme={theme} />
+                <Button label="Reset the tour to its beginning" variant="ghost" onPress={resetDemo} theme={theme} />
               </View>
             </Card>
           )}

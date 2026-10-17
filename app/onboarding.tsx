@@ -14,7 +14,7 @@ import { colors, spacing } from '@/theme/tokens';
 import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC } from '@/theme/fonts';
 
 export default function Onboarding() {
-  const { backend, mode, demo, refreshSession } = useApp();
+  const { backend, mode, demo, refreshSession, backendNotice } = useApp();
   const router = useRouter();
   const [tab, setTab] = useState<'welcome' | 'signin' | 'signup' | 'reset'>('welcome');
   const [email, setEmail] = useState('');
@@ -70,6 +70,11 @@ export default function Onboarding() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {backendNotice ? (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>{backendNotice}</Text>
+          </View>
+        ) : null}
         <Text style={styles.eyebrow}>Project Two</Text>
         {tab === 'welcome' ? (
           <>
@@ -129,6 +134,13 @@ export default function Onboarding() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.parchment },
   content: { padding: spacing.xl, paddingTop: 96, paddingBottom: 64 },
+  noticeBox: {
+    backgroundColor: colors.brassMist,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 24,
+  },
+  noticeText: { fontFamily: FONT_BODY, fontSize: 13.5, color: colors.ink, lineHeight: 20 },
   eyebrow: { fontSize: 12, letterSpacing: 2.5, color: colors.oxide, fontFamily: FONT_BODY, marginBottom: spacing.md, textTransform: 'uppercase' },
   title: { fontFamily: FONT_HEAD, fontSize: 36, color: colors.ink, lineHeight: 44, marginBottom: spacing.sm },
   tagline: { fontFamily: FONT_HEAD_ITALIC, fontSize: 16, color: colors.inkFaint },

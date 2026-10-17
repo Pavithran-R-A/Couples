@@ -352,8 +352,9 @@ export class DemoRepository implements BackendAdapter {
   async getCompanionState(): Promise<CompanionState | null> {
     await this.load();
     const me = await this.getMyProfile();
-    if (!me?.coupleId) return null;
-    return this.data.companion;
+    const c = this.data.companion;
+    if (!me?.coupleId || !c) return null;
+    return { ...c };
   }
 
   async careForCompanion(kind: 'water' | 'sunlight' | 'play'): Promise<CompanionState> {
@@ -368,7 +369,7 @@ export class DemoRepository implements BackendAdapter {
     if (kind === 'water') c.lastWateredAt = now;
     if (kind === 'sunlight') c.lastSunlitAt = now;
     await this.save();
-    return c;
+    return { ...c };
   }
 
   async getMemories(): Promise<Memory[]> {

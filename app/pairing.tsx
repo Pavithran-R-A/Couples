@@ -4,8 +4,8 @@ import { useRouter, Stack } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
 import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
 import { spacing, radii } from '@/theme/tokens';
-import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC, FONT_BOLD, FONT_EDITORIAL } from '@/theme/fonts';
-import { EnvelopeArt, Constellation, FlowerSprig } from '@/components/Illustrations';
+import { FONT_HEAD, FONT_BODY, FONT_BOLD, FONT_EDITORIAL } from '@/theme/fonts';
+import { EnvelopeArt, Constellation } from '@/components/Illustrations';
 
 export default function Pairing() {
   const { backend, refreshSession } = useApp();

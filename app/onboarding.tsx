@@ -15,7 +15,6 @@ import { Button, Input, ErrorNote, useTheme } from '@/theme/ui';
 import { spacing, radii } from '@/theme/tokens';
 import {
   FONT_HEAD,
-  FONT_HEAD_LIGHT,
   FONT_BODY,
   FONT_MEDIUM,
   FONT_BOLD,
@@ -23,7 +22,6 @@ import {
 } from '@/theme/fonts';
 import { CelestialGarden, EnvelopeArt, Constellation, KeepsakeStamp, FlowerSprig } from '@/components/Illustrations';
 import { EntrySequence } from '@/components/EntrySequence';
-import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
 
 const INTRO_LINES = [
   'A little world for just you two.',

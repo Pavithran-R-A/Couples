@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { useApp } from '../providers/AppProvider';
-import { spacing, radii } from '../theme/tokens';
-import { FONT_HEAD, FONT_BODY, FONT_EDITORIAL, FONT_MEDIUM } from '../theme/fonts';
+import { spacing } from '../theme/tokens';
+import { FONT_EDITORIAL, FONT_MEDIUM } from '../theme/fonts';
 import { CelestialGarden, EnvelopeArt, FlowerSprig, Constellation } from './Illustrations';
 import { LanternSeed } from './LanternSeed';
 import { Button } from '../theme/ui';

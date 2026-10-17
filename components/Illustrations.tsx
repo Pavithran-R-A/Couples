@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, G, Defs, LinearGradient, Stop, RadialGradient, Rect, Text as SvgText, Ellipse } from 'react-native-svg';
+import Svg, { Path, Circle, G, Defs, LinearGradient, Stop, Rect, Text as SvgText, Ellipse } from 'react-native-svg';
 import { brand } from '../theme/tokens';
 
 // Midnight Postcards — original vector illustrations.
@@ -22,7 +22,7 @@ export function CelestialGarden({
   const star = moonlit ? '#F4EDE6' : '#F9EEDB';
   const hill1 = moonlit ? '#1A2338' : '#2C2036';
   const hill2 = moonlit ? '#151D32' : brand.romanticPlum;
-  const stars: Array<[number, number, number]> = [
+  const stars: [number, number, number][] = [
     [24, 30, 1.4], [58, 16, 1], [92, 44, 1.6], [130, 22, 1.1], [168, 52, 1],
     [205, 30, 1.5], [238, 14, 1], [272, 48, 1.3], [306, 26, 1], [34, 66, 1],
     [150, 74, 1.2], [250, 70, 1.4], [320, 62, 1], [200, 90, 1], [80, 84, 1.1],

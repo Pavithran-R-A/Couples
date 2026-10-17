@@ -12,6 +12,12 @@
 
 create extension if not exists "pgcrypto";
 
+-- Private schema for internal RLS helpers. Nothing here is exposed to
+-- the Data API (not in the exposed schemas list) and EXECUTE is revoked
+-- from client roles except where explicitly granted.
+create schema if not exists private;
+grant usage on schema private to postgres, service_role;
+
 -- ---------- tables ----------
 
 create table if not exists public.profiles (
@@ -119,14 +125,25 @@ create table if not exists public.mood_check_ins (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.pocket_notes (
+  id uuid primary key default gen_random_uuid(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  author_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 500),
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+
+create index if not exists pocket_notes_couple_idx on public.pocket_notes(couple_id, created_at desc);
+
 create index if not exists responses_letter_idx on public.responses(letter_id);
 create index if not exists letters_couple_date_idx on public.daily_letters(couple_id, letter_date desc);
 create index if not exists memories_couple_idx on public.memories(couple_id, memory_date desc);
 
 -- ---------- helpers ----------
 
-create or replace function public.is_couple_member(p_couple uuid, p_user uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+create or replace function private.is_couple_member(p_couple uuid, p_user uuid)
+returns boolean language sql stable security definer set search_path = public, private as $$
   select exists (
     select 1 from public.couples c
     where c.id = p_couple and (c.partner_a_id = p_user or c.partner_b_id = p_user)
@@ -135,15 +152,15 @@ $$;
 
 -- The caller's own couple id, resolved without reading profiles under RLS
 -- (avoids recursive policy evaluation on the profiles table).
-create or replace function public.my_couple_id()
-returns uuid language sql stable security definer set search_path = public as $$
+create or replace function private.my_couple_id()
+returns uuid language sql stable security definer set search_path = public, private as $$
   select couple_id from public.profiles where id = auth.uid();
 $$;
 
 -- Reveal condition, evaluated as definer so the responses policy never
 -- reads the responses table under its own RLS (which would recurse).
-create or replace function public.both_partners_answered(p_letter uuid, p_user uuid)
-returns boolean language sql stable security definer set search_path = public as $
+create or replace function private.both_partners_answered(p_letter uuid, p_user uuid)
+returns boolean language sql stable security definer set search_path = public, private as $$
   select (
     select count(distinct author_id) = 2
     from public.responses
@@ -157,7 +174,7 @@ returns boolean language sql stable security definer set search_path = public as
            and p_user in (c.partner_a_id, c.partner_b_id))
       )
   );
-$;
+$$;
 
 -- ---------- row level security ----------
 
@@ -172,16 +189,20 @@ alter table public.pet_states enable row level security;
 alter table public.memories enable row level security;
 alter table public.milestones enable row level security;
 alter table public.mood_check_ins enable row level security;
+alter table public.pocket_notes enable row level security;
 
 -- profiles: read only within your couple; write only your own row.
+-- couple_id is NEVER client-writable: pairing changes flow exclusively
+-- through the SECURITY DEFINER join/unlink RPCs. We enforce this by
+-- allowing own-row updates only when couple_id is unchanged.
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles for select to authenticated
-  using (id = auth.uid() or couple_id = public.my_couple_id());
+  using (id = auth.uid() or couple_id = private.my_couple_id());
 
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles for update to authenticated
-  using (id = auth.uid() and (couple_id = public.my_couple_id() or couple_id is null))
-  with check (id = auth.uid() and (couple_id = public.my_couple_id() or couple_id is null));
+  using (id = auth.uid())
+  with check (id = auth.uid() and couple_id = (select couple_id from public.profiles where id = auth.uid()));
 
 drop policy if exists profiles_insert_own on public.profiles;
 create policy profiles_insert_own on public.profiles for insert to authenticated
@@ -190,20 +211,23 @@ create policy profiles_insert_own on public.profiles for insert to authenticated
 -- couples: members can see their own couple only.
 drop policy if exists couples_select on public.couples;
 create policy couples_select on public.couples for select to authenticated
-  using (public.is_couple_member(id, auth.uid()));
+  using (private.is_couple_member(id, auth.uid()));
+
+-- couples: NO client-side UPDATE policy at all. Partner IDs, membership
+-- and relationship fields change only through the SECURITY DEFINER
+-- pairing RPCs, which ordinary roles cannot bypass.
 
 drop policy if exists couples_update on public.couples;
-create policy couples_update on public.couples for update to authenticated
-  using (public.is_couple_member(id, auth.uid())) with check (public.is_couple_member(id, auth.uid()));
+drop policy if exists couples_update_protected on public.couples;
 
--- invitations: creator can read own; joining happens via RPC only.
+-- invitations: creator can read own. NO client INSERT policy — codes are
+-- minted exclusively by create_my_invitation() (server-side, atomic).
+
 drop policy if exists invitations_select on public.invitations;
 create policy invitations_select on public.invitations for select to authenticated
   using (created_by = auth.uid());
 
 drop policy if exists invitations_insert on public.invitations;
-create policy invitations_insert on public.invitations for insert to authenticated
-  with check (created_by = auth.uid());
 
 -- question bank: readable by all authenticated users.
 drop policy if exists question_bank_read on public.question_bank;
@@ -212,7 +236,7 @@ create policy question_bank_read on public.question_bank for select to authentic
 -- daily letters: couple members only.
 drop policy if exists letters_select on public.daily_letters;
 create policy letters_select on public.daily_letters for select to authenticated
-  using (public.is_couple_member(couple_id, auth.uid()));
+  using (private.is_couple_member(couple_id, auth.uid()));
 
 -- responses: THE critical rule.
 --   * You always see your own row.
@@ -224,11 +248,11 @@ create policy responses_select on public.responses for select to authenticated
   using (
     author_id = auth.uid()
     or (
-      public.both_partners_answered(
+      private.both_partners_answered(
         responses.letter_id,
         auth.uid()
       )
-      and public.is_couple_member(
+      and private.is_couple_member(
         (select couple_id from public.daily_letters l where l.id = responses.letter_id),
         auth.uid()
       )
@@ -239,7 +263,7 @@ drop policy if exists responses_insert on public.responses;
 create policy responses_insert on public.responses for insert to authenticated
   with check (
     author_id = auth.uid()
-    and public.is_couple_member(
+    and private.is_couple_member(
       (select couple_id from public.daily_letters l where l.id = responses.letter_id),
       auth.uid()
     )
@@ -264,25 +288,25 @@ create policy reactions_insert on public.reactions for insert to authenticated
       join public.daily_letters l on l.id = r.letter_id
       where r.id = reactions.response_id
         and r.author_id <> auth.uid()
-        and public.is_couple_member(l.couple_id, auth.uid())
+        and private.is_couple_member(l.couple_id, auth.uid())
     )
   );
 
 -- pet states: shared by the couple, mutated only via RPC.
 drop policy if exists pet_select on public.pet_states;
 create policy pet_select on public.pet_states for select to authenticated
-  using (public.is_couple_member(couple_id, auth.uid()));
+  using (private.is_couple_member(couple_id, auth.uid()));
 
 -- memories: couple-wide read, author-scoped write.
 drop policy if exists memories_select on public.memories;
 create policy memories_select on public.memories for select to authenticated
-  using (public.is_couple_member(couple_id, auth.uid()));
+  using (private.is_couple_member(couple_id, auth.uid()));
 
 drop policy if exists memories_insert on public.memories;
 create policy memories_insert on public.memories for insert to authenticated
   with check (
     author_id = auth.uid()
-    and public.is_couple_member(couple_id, auth.uid())
+    and private.is_couple_member(couple_id, auth.uid())
   );
 
 drop policy if exists memories_update on public.memories;
@@ -296,19 +320,49 @@ create policy memories_delete on public.memories for delete to authenticated
 -- milestones: couple read only.
 drop policy if exists milestones_select on public.milestones;
 create policy milestones_select on public.milestones for select to authenticated
-  using (public.is_couple_member(couple_id, auth.uid()));
+  using (private.is_couple_member(couple_id, auth.uid()));
 
 -- mood check-ins: explicitly shared with the partner.
 drop policy if exists moods_select on public.mood_check_ins;
 create policy moods_select on public.mood_check_ins for select to authenticated
-  using (public.is_couple_member(couple_id, auth.uid()));
+  using (private.is_couple_member(couple_id, auth.uid()));
 
 drop policy if exists moods_insert on public.mood_check_ins;
 create policy moods_insert on public.mood_check_ins for insert to authenticated
   with check (
     author_id = auth.uid()
-    and public.is_couple_member(couple_id, auth.uid())
+    and private.is_couple_member(couple_id, auth.uid())
   );
+
+-- pocket notes: couple-wide read (notes are meant to be received),
+-- author-scoped write. Marking read happens via RPC (only the recipient
+-- can mark their side; read_at is set once by either member seeing it).
+drop policy if exists pocket_notes_select on public.pocket_notes;
+create policy pocket_notes_select on public.pocket_notes for select to authenticated
+  using (private.is_couple_member(couple_id, auth.uid()));
+
+drop policy if exists pocket_notes_insert on public.pocket_notes;
+create policy pocket_notes_insert on public.pocket_notes for insert to authenticated
+  with check (
+    author_id = auth.uid()
+    and private.is_couple_member(couple_id, auth.uid())
+  );
+
+-- Only the recipient may mark a note read, and only that column: the
+-- table-level grant below removes UPDATE on every other column.
+drop policy if exists pocket_notes_update_read on public.pocket_notes;
+create policy pocket_notes_update_read on public.pocket_notes for update to authenticated
+  using (
+    author_id <> auth.uid()
+    and private.is_couple_member(couple_id, auth.uid())
+  )
+  with check (
+    author_id <> auth.uid()
+    and private.is_couple_member(couple_id, auth.uid())
+  );
+
+revoke update on public.pocket_notes from authenticated;
+grant update (read_at) on public.pocket_notes to authenticated;
 
 -- ---------- atomic pairing ----------
 
@@ -595,14 +649,15 @@ returns json language sql stable security definer set search_path = public as $$
 $$;
 
 create or replace function public.export_my_data()
-returns json language sql stable security definer set search_path = public as $$
+returns json language sql stable security definer set search_path = public, private as $$
   select json_build_object(
     'profile', (select to_json(p) from public.profiles p where p.id = auth.uid()),
     'letters', (select coalesce(json_agg(to_json(l)), '[]'::json) from public.daily_letters l
                 where l.couple_id = (select couple_id from public.profiles where id = auth.uid())),
     'responses', (select coalesce(json_agg(to_json(r)), '[]'::json) from public.responses r where r.author_id = auth.uid()),
     'memories', (select coalesce(json_agg(to_json(m)), '[]'::json) from public.memories m where m.author_id = auth.uid()),
-    'moods', (select coalesce(json_agg(to_json(mc)), '[]'::json) from public.mood_check_ins mc where mc.author_id = auth.uid())
+    'moods', (select coalesce(json_agg(to_json(mc)), '[]'::json) from public.mood_check_ins mc where mc.author_id = auth.uid()),
+    'pocket_notes', (select coalesce(json_agg(to_json(pn)), '[]'::json) from public.pocket_notes pn where pn.author_id = auth.uid())
   );
 $$;
 
@@ -619,13 +674,37 @@ end;
 $$;
 
 -- ---------- function access ----------
--- Every SECURITY DEFINER function is a public endpoint by default in
--- Postgres. Restrict them all to authenticated sessions; the anon role
--- (unauthenticated Data API traffic) gets nothing.
+-- Table privileges: RLS policies filter rows, but the calling role must
+-- still hold the underlying DML privileges (RLS is applied on top of
+-- GRANTs, never instead of them).
+grant usage on schema public to anon, authenticated, service_role;
+grant select on public.question_bank to authenticated;
+grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.couples to authenticated;
+grant select on public.invitations to authenticated;
+grant select, insert, update, delete on public.daily_letters to authenticated;
+grant select, insert, update, delete on public.responses to authenticated;
+grant select, insert on public.reactions to authenticated;
+grant select on public.pet_states to authenticated;
+grant select, insert, update, delete on public.memories to authenticated;
+grant select on public.milestones to authenticated;
+grant select, insert on public.mood_check_ins to authenticated;
+grant select, insert on public.pocket_notes to authenticated;
+-- anon (logged out) can read the question bank only.
+grant select on public.question_bank to anon;
 
-revoke execute on function public.is_couple_member(uuid, uuid) from public, anon;
-revoke execute on function public.my_couple_id() from public, anon;
-revoke execute on function public.both_partners_answered(uuid, uuid) from public, anon;
+-- Internal RLS helpers live in the private schema, which is NOT exposed
+-- through the Data API (Supabase exposes only public / storage), so no
+-- client can call them directly even though authenticated needs EXECUTE:
+-- row level security evaluates policy expressions with the caller's
+-- privileges, so the calling role must hold EXECUTE on helper functions.
+revoke all on schema private from public, anon;
+grant usage on schema private to authenticated, service_role;
+grant execute on function private.is_couple_member(uuid, uuid) to authenticated, service_role;
+grant execute on function private.my_couple_id() to authenticated, service_role;
+grant execute on function private.both_partners_answered(uuid, uuid) to authenticated, service_role;
+
+-- User-facing RPCs: authenticated only, anon gets nothing.
 revoke execute on function public.create_my_invitation() from public, anon;
 revoke execute on function public.join_couple_with_code(text) from public, anon;
 revoke execute on function public.unlink_partner() from public, anon;
@@ -635,9 +714,6 @@ revoke execute on function public.get_couple_stats() from public, anon;
 revoke execute on function public.export_my_data() from public, anon;
 revoke execute on function public.delete_my_account() from public, anon;
 
-grant execute on function public.is_couple_member(uuid, uuid) to authenticated;
-grant execute on function public.my_couple_id() to authenticated;
-grant execute on function public.both_partners_answered(uuid, uuid) to authenticated;
 grant execute on function public.create_my_invitation() to authenticated;
 grant execute on function public.join_couple_with_code(text) to authenticated;
 grant execute on function public.unlink_partner() to authenticated;

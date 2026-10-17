@@ -58,6 +58,7 @@ export interface BackendAdapter {
   // Pocket notes (affectionate short notes between partners)
   getPocketNotes(): Promise<PocketNote[]>;
   sendPocketNote(body: string): Promise<PocketNote>;
+  markPocketNoteRead(noteId: string): Promise<void>;
 
   // Settings
   exportData(): Promise<Record<string, unknown>>;

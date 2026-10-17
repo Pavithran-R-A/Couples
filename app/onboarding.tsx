@@ -32,7 +32,7 @@ const INTRO_LINES = [
 ];
 
 export default function Onboarding() {
-  const { backend, mode, demo, refreshSession, backendNotice, reducedMotion } = useApp();
+  const { backend, mode, demo, refreshSession, backendNotice, retryBackend, reducedMotion } = useApp();
   const theme = useTheme();
   const router = useRouter();
   const [tab, setTab] = useState<'welcome' | 'signin' | 'signup' | 'reset'>('welcome');
@@ -143,6 +143,7 @@ export default function Onboarding() {
           {backendNotice ? (
             <View style={[styles.noticeBox, { backgroundColor: theme.goldSoft, borderColor: theme.gold }]}>
               <Text style={[styles.noticeText, { color: theme.ink }]}>{backendNotice}</Text>
+              <Button label="Try again" variant="quiet" onPress={retryBackend} theme={theme} />
             </View>
           ) : null}
 

@@ -414,14 +414,56 @@ export class SupabaseRepository implements BackendAdapter {
     if (error) throw error;
   }
 
-  // Pocket notes are a demo-world concept for now; production has no table
-  // yet, so these return an empty set / no-op rather than touching data.
   async getPocketNotes(): Promise<PocketNote[]> {
-    return [];
+    const me = await this.getMyProfile();
+    if (!me?.coupleId) return [];
+    const { data, error } = await this.client
+      .from('pocket_notes')
+      .select('id, couple_id, author_id, body, created_at, read_at')
+      .eq('couple_id', me.coupleId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      coupleId: row.couple_id,
+      authorId: row.author_id,
+      body: row.body,
+      createdAt: row.created_at,
+      readAt: row.read_at,
+    }));
   }
 
-  async sendPocketNote(_body: string): Promise<PocketNote> {
-    throw new Error('Pocket notes are coming soon.');
+  async sendPocketNote(body: string): Promise<PocketNote> {
+    const trimmed = body.trim();
+    if (!trimmed || trimmed.length > 500) {
+      throw new Error('Pocket notes must be between 1 and 500 characters.');
+    }
+    const me = await this.getMyProfile();
+    if (!me?.coupleId) throw new Error('You need to be in a couple to send a pocket note');
+    const { data, error } = await this.client
+      .from('pocket_notes')
+      .insert({ couple_id: me.coupleId, author_id: me.id, body: trimmed })
+      .select('id, couple_id, author_id, body, created_at, read_at')
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      coupleId: data.couple_id,
+      authorId: data.author_id,
+      body: data.body,
+      createdAt: data.created_at,
+      readAt: data.read_at,
+    };
+  }
+
+  async markPocketNoteRead(noteId: string): Promise<void> {
+    const { error } = await this.client
+      .from('pocket_notes')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', noteId)
+      .neq('author_id', (await this.getMyProfile())?.id ?? '');
+    if (error) throw error;
   }
 
   async exportData(): Promise<Record<string, unknown>> {

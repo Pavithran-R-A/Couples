@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, Press
 import { Stack } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
 import { spacing, radii } from '@/theme/tokens';
-import { Card, SectionLabel, Button, ErrorNote, EmptyState, useTheme } from '@/theme/ui';
-import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC, FONT_BOLD, FONT_MEDIUM, FONT_EDITORIAL } from '@/theme/fonts';
+import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
+import { FONT_HEAD, FONT_BODY, FONT_BOLD, FONT_MEDIUM, FONT_EDITORIAL } from '@/theme/fonts';
 import { EngravedDivider } from '@/components/Ornaments';
 import { MemoryCard } from '@/components/MemoryCard';
 import { FlowerSprig, KeepsakeStamp, Constellation, Ribbon } from '@/components/Illustrations';
@@ -57,6 +57,7 @@ export default function MoodsTab() {
   }, [backend]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount data load
     load();
   }, [load]);
 
@@ -145,7 +146,7 @@ export default function MoodsTab() {
               Pocket notes
             </SectionLabel>
             <Text style={[styles.moodHint, { color: theme.inkFaint }]}>
-              Tiny surprise messages. Write one here and read it from your partner's perspective.
+              Tiny surprise messages. Write one here and read it from your partner&apos;s perspective.
             </Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <TextInput

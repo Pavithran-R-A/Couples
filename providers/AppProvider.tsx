@@ -16,6 +16,7 @@ interface AppState {
   authReady: boolean;
   session: { id: string; email: string } | null;
   backendNotice: string | null;
+  retryBackend: () => void;
   refreshSession: () => Promise<void>;
   theme: Theme;
   themeMode: ThemeMode;
@@ -32,9 +33,10 @@ const MOTION_KEY = 'projecttwo.reducedMotion';
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [configuredMode] = useState<BackendMode>(() => (isSupabaseConfigured() ? 'supabase' : 'demo'));
   const demo = useMemo(() => new DemoRepository(), []);
-  const [forcedDemo, setForcedDemo] = useState(false);
-  const [backendNotice, setBackendNotice] = useState<string | null>(null);
-  const mode: BackendMode = forcedDemo ? 'demo' : configuredMode;
+  const [backendError, setBackendError] = useState<string | null>(null);
+  const [backendProbeKey, setBackendProbeKey] = useState(0);
+  const retryBackend = useCallback(() => setBackendProbeKey((k) => k + 1), []);
+  const mode: BackendMode = configuredMode;
   const backend: BackendAdapter = useMemo(() => {
     if (mode === 'supabase') {
       try {
@@ -46,9 +48,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return demo;
   }, [mode, demo]);
 
-  // If the configured backend cannot serve data (schema absent, network
-  // down), fall back to the interactive demo with a visible notice rather
-  // than letting every screen throw.
+  // A real user must never be silently switched into the fictional demo.
+  // If the production backend cannot be reached, we surface a blocking
+  // error with a retry action; the demo remains an explicit choice on the
+  // welcome screen only.
   useEffect(() => {
     if (configuredMode !== 'supabase') return;
     let cancelled = false;
@@ -56,18 +59,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const probe = new SupabaseRepository(createSupabaseClient());
         await probe.getMyProfile();
+        if (!cancelled) setBackendError(null);
       } catch {
         if (cancelled) return;
-        setForcedDemo(true);
-        setBackendNotice(
-          'The production backend is not ready yet, so the app is running the interactive demo with fictional data.'
+        setBackendError(
+          'We cannot reach your Project Two space right now. Check your connection and try again — your letters are waiting on the real account system. The demo below is fictional and separate.'
         );
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [configuredMode]);
+  }, [configuredMode, backendProbeKey]);
 
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() =>
     Appearance.getColorScheme() === 'dark' ? 'moonlit' : 'daylight'
@@ -119,10 +122,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      backend, mode, demo, authReady, session, backendNotice, refreshSession,
+      backend, mode, demo, authReady, session, backendNotice: backendError, retryBackend, refreshSession,
       theme, themeMode, setThemeMode, reducedMotion, setReducedMotion,
     }),
-    [backend, mode, demo, authReady, session, backendNotice, refreshSession,
+    [backend, mode, demo, authReady, session, backendError, retryBackend, refreshSession,
      theme, themeMode, setThemeMode, reducedMotion, setReducedMotion]
   );
 

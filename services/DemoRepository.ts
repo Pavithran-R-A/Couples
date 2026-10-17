@@ -474,6 +474,16 @@ export class DemoRepository implements BackendAdapter {
     return note;
   }
 
+  async markPocketNoteRead(noteId: string): Promise<void> {
+    await this.load();
+    const me = await this.getMyProfile();
+    const note = this.data.pocketNotes.find((n) => n.id === noteId);
+    if (note && me && note.authorId !== me.id && !note.readAt) {
+      note.readAt = new Date().toISOString();
+      await this.save();
+    }
+  }
+
   async exportData(): Promise<Record<string, unknown>> {
     await this.load();
     return { mode: 'demo', exportedAt: new Date().toISOString(), ...this.data };

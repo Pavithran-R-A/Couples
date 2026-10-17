@@ -22,14 +22,17 @@ function RootGate() {
     if (mode === 'supabase') {
       backend
         .getMyProfile()
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- async profile resolution drives the pairing redirect
         .then((p) => setNeedsPairing(!p?.coupleId))
         .catch(() => setNeedsPairing(false));
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronous mode branch
       setNeedsPairing(false);
     }
   }, [authReady, session, mode, backend, router]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- navigation redirect on state change
     if (needsPairing) router.replace('/pairing');
   }, [needsPairing, router]);
 

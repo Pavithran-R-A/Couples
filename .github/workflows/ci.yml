@@ -12,9 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Expo SDK 57 requires Node 22.13+.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.13
           cache: npm
 
       - name: Install dependencies
@@ -26,8 +27,8 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      - name: Lint
-        run: npx expo lint --max-warnings 0 || echo "lint findings present (non-blocking, see log)"
+      - name: Lint (blocking)
+        run: npx expo lint --max-warnings 0
 
       - name: Unit tests (demo world)
         run: |
@@ -44,6 +45,33 @@ jobs:
           name: web-dist
           path: dist
 
+  migration:
+    name: SQL migration + authorization on real Postgres
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Runs backend_src/0001_initial_schema.sql UNMODIFIED against a real
+      # Postgres engine (PGlite, the Postgres wasm build used by
+      # @electric-sql/pglite), with a Supabase-equivalent runtime: anon /
+      # authenticated / service_role roles, an auth schema with auth.users
+      # and auth.uid() reading request.jwt.claims. Then drives the full
+      # authorization matrix under real authenticated roles: invite expiry,
+      # replay, third-user joins, blocked direct inserts, profile-field
+      # protection, reveal privacy, cross-couple isolation, pocket-note
+      # rules, anon denial, unpair and account deletion. 19 checks must all
+      # pass or the job fails.
+      - name: Apply full migration and run authorization tests
+        run: node scripts/migrate-and-test.mjs
+
   config-checks:
     runs-on: ubuntu-latest
     steps:
@@ -51,7 +79,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.13
 
       - name: Install dependencies
         run: npm ci

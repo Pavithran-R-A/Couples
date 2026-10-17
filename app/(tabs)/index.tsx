@@ -16,19 +16,18 @@ import { Card, SectionLabel, Button, ErrorNote, Pill, EmptyState, useTheme } fro
 import {
   FONT_HEAD,
   FONT_BODY,
-  FONT_HEAD_ITALIC,
   FONT_BOLD,
   FONT_MEDIUM,
   FONT_EDITORIAL,
 } from '@/theme/fonts';
 import { EngravedDivider, WaxSeal } from '@/components/Ornaments';
-import { EnvelopeArt, FlowerSprig, KeepsakeStamp, Constellation, GardenGround } from '@/components/Illustrations';
+import { EnvelopeArt, FlowerSprig, KeepsakeStamp, Constellation } from '@/components/Illustrations';
 import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
 import { ReactionRow } from '@/components/ReactionRow';
 import type { LetterResponse, Reaction } from '@/domain/types';
 
 export default function LettersTab() {
-  const { backend, session, mode } = useApp();
+  const { backend, mode } = useApp();
   const theme = useTheme();
   const router = useRouter();
   const isDemo = mode === 'demo';
@@ -41,7 +40,7 @@ export default function LettersTab() {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [history, setHistory] = useState<Array<{ letterId: string; question: { text: string }; date: string; bothReplied: boolean }>>([]);
+  const [history, setHistory] = useState<{ letterId: string; question: { text: string }; date: string; bothReplied: boolean }[]>([]);
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -74,6 +73,7 @@ export default function LettersTab() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data load on mount
     load();
   }, [load]);
 

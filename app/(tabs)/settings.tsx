@@ -31,6 +31,7 @@ export default function SettingsTab() {
   }, [backend]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data load on mount
     load();
   }, [load]);
 

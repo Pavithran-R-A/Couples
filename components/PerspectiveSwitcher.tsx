@@ -11,7 +11,6 @@ export function PerspectiveSwitcher() {
   if (mode !== 'demo') return null;
 
   const isA = session?.id === 'demo-user-a';
-  const current = isA ? 'Mara' : 'Theo';
   const other: 'a' | 'b' = isA ? 'b' : 'a';
 
   const switchTo = async () => {

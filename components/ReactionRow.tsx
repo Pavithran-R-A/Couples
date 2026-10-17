@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { spacing, radii, type Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_BODY } from '../theme/fonts';
 
-const REACTIONS: Array<{ kind: string; glyph: string; label: string }> = [
+const REACTIONS: { kind: string; glyph: string; label: string }[] = [
   { kind: 'heart', glyph: '♥', label: 'Love' },
   { kind: 'smile', glyph: '☺', label: 'Warm' },
   { kind: 'spark', glyph: '✶', label: 'Spark' },

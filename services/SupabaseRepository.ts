@@ -12,6 +12,7 @@ import type {
   Milestone,
   MoodCheckIn,
   PocketNote,
+  WeeklyAdventure,
 } from '../domain/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BackendAdapter } from './BackendAdapter';
@@ -34,16 +35,21 @@ export class SupabaseRepository implements BackendAdapter {
   }
 
   async signUp(email: string, password: string, displayName: string): Promise<AuthUser> {
-    const { data, error } = await this.client.auth.signUp({ email, password });
+    // The profile row is created by the on_auth_user_created database
+    // trigger the moment the auth user exists — including when email
+    // confirmation is on and no session is available client-side. We pass
+    // the display name through metadata so the trigger can read it.
+    const { data, error } = await this.client.auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: displayName } },
+    });
     if (error) throw error;
     const user = data.user;
     if (!user) throw new Error('Sign up failed');
-    const { error: profileError } = await this.client.from('profiles').insert({
-      id: user.id,
-      email,
-      display_name: displayName,
-    });
-    if (profileError) throw profileError;
+    // When email confirmation is on, data.session is null here — that is
+    // fine: the app shows a "check your inbox" state and the profile is
+    // already guaranteed server-side.
     return { id: user.id, email };
   }
 
@@ -486,6 +492,47 @@ export class SupabaseRepository implements BackendAdapter {
       lettersCompleted: row?.letters_completed ?? 0,
       memoriesCount: row?.memories_count ?? 0,
       daysTogether: row?.days_together ?? 0,
+    };
+  }
+
+  async getWeeklyAdventure(): Promise<WeeklyAdventure | null> {
+    const { data, error } = await this.client.rpc('get_this_weeks_adventure');
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return {
+      id: row.id,
+      coupleId: row.couple_id,
+      weekOf: row.week_of,
+      kind: row.kind,
+      title: row.title,
+      detail: row.detail,
+      partnerADone: row.partner_a_done,
+      partnerBDone: row.partner_b_done,
+      partnerAEntry: row.partner_a_entry ?? null,
+      partnerBEntry: row.partner_b_entry ?? null,
+    };
+  }
+
+  async completeAdventure(id: string, entry: string): Promise<WeeklyAdventure> {
+    const { data, error } = await this.client.rpc('complete_adventure_part', {
+      p_id: id,
+      p_entry: entry.slice(0, 500),
+    });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new Error('Could not save your part of the adventure');
+    return {
+      id: row.id,
+      coupleId: row.couple_id,
+      weekOf: row.week_of,
+      kind: row.kind,
+      title: row.title,
+      detail: row.detail,
+      partnerADone: row.partner_a_done,
+      partnerBDone: row.partner_b_done,
+      partnerAEntry: row.partner_a_entry ?? null,
+      partnerBEntry: row.partner_b_entry ?? null,
     };
   }
 }

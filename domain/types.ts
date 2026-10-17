@@ -131,3 +131,23 @@ export interface Question {
   text: string;
   category: string;
 }
+
+// Weekly adventures: one small cooperative activity per couple per week.
+export type AdventureKind =
+  | 'gratitude_exchange'
+  | 'tiny_date'
+  | 'playful_question'
+  | 'doodle_prompt';
+
+export interface WeeklyAdventure {
+  id: string;
+  coupleId: string;
+  weekOf: string; // YYYY-MM-DD (Monday)
+  kind: AdventureKind;
+  title: string;
+  detail: string;
+  partnerADone: boolean;
+  partnerBDone: boolean;
+  partnerAEntry: string | null;
+  partnerBEntry: string | null;
+}

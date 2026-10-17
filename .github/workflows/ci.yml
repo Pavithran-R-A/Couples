@@ -94,9 +94,16 @@ jobs:
             echo "::error::.env is committed — remove it and rotate any credentials"
             exit 1
           fi
-          # Scan tracked files for hardcoded service-role keys / real URLs
-          if git grep -nE 'service_role|SUPABASE_SERVICE_ROLE_KEY' -- ':!*.md' ':!.env.example'; then
-            echo "::error::possible secret reference in tracked files"
+          # Real-secret detection: look for actual key material, not role
+          # names. Supabase anon/service keys are base64 JWT-ish strings
+          # starting "eyJ"; generic high-entropy assignments are flagged.
+          # Docs and the SQL test fixtures are excluded.
+          if git grep -nE 'eyJ[A-Za-z0-9_-]{20,}' -- ':!*.md' ':!.env.example' ':!backend_src/tests'; then
+            echo "::error::possible real key material committed"
+            exit 1
+          fi
+          if git grep -nE '(SUPABASE_[A-Z_]*KEY|SUPABASE_SERVICE)\s*=\s*["'"'][^"'"']{8,}' -- ':!.env.example'; then
+            echo "::error::possible hardcoded Supabase key"
             exit 1
           fi
           echo "secret check OK"

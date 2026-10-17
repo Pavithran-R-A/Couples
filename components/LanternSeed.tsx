@@ -19,6 +19,9 @@ export function LanternSeed({ mood, affection, size = 160, onPress }: Props) {
   const { theme, reducedMotion } = useApp();
   const [blinkOpen, setBlinkOpen] = useState(true);
   const [squish, setSquish] = useState(false);
+  // Gaze: eyes drift toward where the user last touched, then settle back.
+  const [gaze, setGaze] = useState({ x: 0, y: 0 });
+  const [noticeTimer, setNoticeTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -28,6 +31,8 @@ export function LanternSeed({ mood, affection, size = 160, onPress }: Props) {
     }, 4200);
     return () => clearInterval(timer);
   }, [reducedMotion]);
+
+  useEffect(() => () => { if (noticeTimer) clearTimeout(noticeTimer); }, [noticeTimer]);
 
   const glow = 0.3 + (affection / 100) * 0.6;
   const coreColor = mood === 'sleepy' ? '#B7A6E8' : brand.honeyGold;
@@ -43,10 +48,22 @@ export function LanternSeed({ mood, affection, size = 160, onPress }: Props) {
   // ear posture follows mood
   const earDroop = mood === 'sleepy' ? 10 : mood === 'delighted' ? -6 : 0;
 
-  const handlePress = () => {
-    if (reducedMotion) return;
+  const handlePress = (evt: { nativeEvent: { locationX: number; locationY: number } }) => {
+    if (reducedMotion) {
+      onPress?.();
+      return;
+    }
     setSquish(true);
     setTimeout(() => setSquish(false), 220);
+    // Look toward the touch point, then settle back after a moment.
+    const cx = size / 2;
+    const cy = size * 0.55;
+    const dx = evt.nativeEvent.locationX - cx;
+    const dy = evt.nativeEvent.locationY - cy;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    setGaze({ x: (dx / len) * 4.5, y: (dy / len) * 3 });
+    if (noticeTimer) clearTimeout(noticeTimer);
+    setNoticeTimer(setTimeout(() => setGaze({ x: 0, y: 0 }), 1800));
     onPress?.();
   };
 
@@ -130,12 +147,12 @@ export function LanternSeed({ mood, affection, size = 160, onPress }: Props) {
         </>
       ) : (
         <>
-          <Ellipse cx={82} cy={120} rx={9} ry={blinkOpen ? 12.5 : 2} fill={theme.ink} />
-          <Ellipse cx={118} cy={120} rx={9} ry={blinkOpen ? 12.5 : 2} fill={theme.ink} />
+          <Ellipse cx={82 + gaze.x} cy={120 + gaze.y} rx={9} ry={blinkOpen ? 12.5 : 2} fill={theme.ink} />
+          <Ellipse cx={118 + gaze.x} cy={120 + gaze.y} rx={9} ry={blinkOpen ? 12.5 : 2} fill={theme.ink} />
           {!blinkOpen ? null : (
             <>
-              <Circle cx={85} cy={115} r={3} fill="#FFF8F1" />
-              <Circle cx={121} cy={115} r={3} fill="#FFF8F1" />
+              <Circle cx={85 + gaze.x} cy={115 + gaze.y} r={3} fill="#FFF8F1" />
+              <Circle cx={121 + gaze.x} cy={115 + gaze.y} r={3} fill="#FFF8F1" />
             </>
           )}
           {/* blush */}
@@ -156,7 +173,10 @@ export function LanternSeed({ mood, affection, size = 160, onPress }: Props) {
   }
 
   return (
-    <Pressable onPress={handlePress} style={({ pressed }) => [styles.wrap, { width: size, height: size * 1.2 }, (squish || pressed) && { transform: [{ scale: 0.96 }] }]}>
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [styles.wrap, { width: size, height: size * 1.2 }, (squish || pressed) && { transform: [{ scale: 0.96 }] }]}
+    >
       {body}
     </Pressable>
   );

@@ -80,7 +80,16 @@ export default function Onboarding() {
         if (password.length < 8) throw new Error('Password needs at least 8 characters');
         if (!displayName.trim()) throw new Error('Please add the name your partner will see');
         await backend.signUp(email.trim(), password, displayName.trim());
-        await finish();
+        // With email confirmation on, signUp() leaves no session and the
+        // profile is created server-side by trigger. Route by what the
+        // adapter session actually shows.
+        const s = await backend.getSession();
+        if (s) {
+          await finish();
+        } else {
+          setError('Account created. Check your inbox to confirm your email, then sign in.');
+          setTab('signin');
+        }
       } else if (tab === 'reset') {
         await backend.requestPasswordReset(email.trim());
         setError('If that email is registered, a reset link is on its way.');

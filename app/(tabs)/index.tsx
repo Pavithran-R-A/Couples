@@ -24,7 +24,7 @@ import { EngravedDivider, WaxSeal } from '@/components/Ornaments';
 import { EnvelopeArt, FlowerSprig, KeepsakeStamp, Constellation } from '@/components/Illustrations';
 import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
 import { ReactionRow } from '@/components/ReactionRow';
-import type { LetterResponse, Reaction } from '@/domain/types';
+import type { LetterResponse, Reaction, WeeklyAdventure } from '@/domain/types';
 
 export default function LettersTab() {
   const { backend, mode } = useApp();
@@ -41,6 +41,9 @@ export default function LettersTab() {
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [history, setHistory] = useState<{ letterId: string; question: { text: string }; date: string; bothReplied: boolean }[]>([]);
+  const [adventure, setAdventure] = useState<WeeklyAdventure | null>(null);
+  const [adventureEntry, setAdventureEntry] = useState('');
+  const [adventureBusy, setAdventureBusy] = useState(false);
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -62,6 +65,13 @@ export default function LettersTab() {
           }
         }
         setHistory(await backend.getLetterHistory());
+        try {
+          const adv = await backend.getWeeklyAdventure();
+          setAdventure(adv);
+          if (adv) setAdventureEntry(adv.partnerAEntry ?? '');
+        } catch {
+          setAdventure(null);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not load today\u2019s letter');
       } finally {
@@ -97,6 +107,19 @@ export default function LettersTab() {
       setReactions(await backend.getReactions(letter.letterId));
     } catch {
       setError('Could not send that reaction');
+    }
+  };
+
+  const saveAdventure = async () => {
+    if (!adventure) return;
+    setAdventureBusy(true);
+    try {
+      const next = await backend.completeAdventure(adventure.id, adventureEntry);
+      setAdventure(next);
+    } catch {
+      setError('Could not save your part of the adventure');
+    } finally {
+      setAdventureBusy(false);
     }
   };
 
@@ -236,6 +259,55 @@ export default function LettersTab() {
             </View>
           )}
 
+          {adventure && (
+            <View style={[styles.adventureCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.goldSoft ?? theme.line }]}>
+              <View style={styles.adventureHead}>
+                <KeepsakeStamp size={30} glyph="seed" tone={theme.gold} />
+                <SectionLabel theme={theme} color={theme.gold}>
+                  This week&apos;s adventure
+                </SectionLabel>
+                {adventure.partnerADone && adventure.partnerBDone ? (
+                  <Pill tone="mint" theme={theme}>
+                    Done together
+                  </Pill>
+                ) : null}
+              </View>
+              <Text style={[styles.adventureTitle, { color: theme.ink }]}>{adventure.title}</Text>
+              <Text style={[styles.adventureDetail, { color: theme.inkSoft }]}>{adventure.detail}</Text>
+              {(() => {
+                const mine = adventure.partnerADone;
+                const partnerDone = adventure.partnerBDone;
+                const mineEntry = adventure.partnerAEntry;
+                const partnerEntry = adventure.partnerBEntry;
+                return (
+                  <>
+                    {mine ? (
+                      <Text style={[styles.adventureMine, { color: theme.ink }]}>{mineEntry}</Text>
+                    ) : (
+                      <>
+                        <TextInput
+                          value={adventureEntry}
+                          onChangeText={setAdventureEntry}
+                          placeholder="Your part of the adventure…"
+                          placeholderTextColor={theme.inkFaint}
+                          multiline
+                          maxLength={500}
+                          style={[styles.adventureInput, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.ink }]}
+                        />
+                        <Button label="Mark it done" onPress={saveAdventure} loading={adventureBusy} disabled={!adventureEntry.trim()} theme={theme} style={{ marginTop: spacing.sm }} />
+                      </>
+                    )}
+                    {partnerDone && partnerEntry ? (
+                      <Text style={[styles.adventurePartner, { color: theme.inkSoft }]} numberOfLines={2}>
+                        {mode === 'demo' ? 'Theo' : 'Your partner'}: {partnerEntry}
+                      </Text>
+                    ) : null}
+                  </>
+                );
+              })()}
+            </View>
+          )}
+
           <View style={{ marginTop: spacing.xl }}>
             <SectionLabel theme={theme}>Recent letters</SectionLabel>
             {history.length === 0 ? (
@@ -351,4 +423,27 @@ const styles = StyleSheet.create({
   historyQuestion: { fontFamily: FONT_MEDIUM, fontSize: 14.5 },
   historyDate: { fontFamily: FONT_BODY, fontSize: 12, marginTop: 2 },
   emptyHistory: {},
+  adventureCard: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  adventureHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  adventureTitle: { fontFamily: FONT_HEAD, fontSize: 20, lineHeight: 27 },
+  adventureDetail: { fontFamily: FONT_BODY, fontSize: 14, lineHeight: 21 },
+  adventureMine: { fontFamily: FONT_BODY, fontSize: 15, lineHeight: 23 },
+  adventurePartner: { fontFamily: FONT_BODY, fontSize: 13.5, fontStyle: 'italic' },
+  adventureInput: {
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    minHeight: 76,
+    padding: spacing.md,
+    fontSize: 15,
+    fontFamily: FONT_MEDIUM,
+    textAlignVertical: 'top',
+    lineHeight: 22,
+    alignSelf: 'stretch',
+  },
 });

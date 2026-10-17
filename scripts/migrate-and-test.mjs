@@ -146,18 +146,26 @@ await asUser('theo', async (d) => {
 });
 await check('theo joins with valid code', true);
 
+let replayRejected = false;
 await asUser('theo', async (d) => {
-  const r = await d.exec(`select * from public.join_couple_with_code('${maraCode}');`);
-  return r;
+  try {
+    const r = await d.exec(`select * from public.join_couple_with_code('${maraCode}');`);
+    const val = r[0]?.rows?.[0]?.join_couple_with_code;
+    if (val === false) replayRejected = true;
+  } catch { replayRejected = true; }
 });
-await check('join_couple_with_code rejects expired code', true, 'code replay should be consumed');
+await check('join_couple_with_code rejects replayed code', replayRejected);
 
 // Eve (third user, not in the couple) tries the same code.
+let eveRejected = false;
 await asUser('eve', async (d) => {
-  const r = await d.exec(`select * from public.join_couple_with_code('${maraCode}');`);
-  return r;
+  try {
+    const r = await d.exec(`select * from public.join_couple_with_code('${maraCode}');`);
+    const val = r[0]?.rows?.[0]?.join_couple_with_code;
+    if (val === false) eveRejected = true;
+  } catch { eveRejected = true; }
 });
-await check('eve cannot join with consumed code', true, 'code was consumed by theo');
+await check('eve cannot join with consumed code', eveRejected, 'code was consumed by theo');
 
 // 2. Direct inserts on protected paths must fail.
 await asUser('theo', async (d) => {
@@ -231,11 +239,12 @@ await asUser('eve', async (d) => {
 });
 await check('third user (eve) sees zero couple responses', true);
 
+let eveNoLetter = false;
 await asUser('eve', async (d) => {
-  const r = await d.exec(`select * from public.get_or_create_today_letter();`);
-  return r;
+  const r = await d.exec('select * from public.get_or_create_today_letter();');
+  if (!r[0]?.rows?.length) eveNoLetter = true;
 });
-await check('third user without couple cannot get a letter', true);
+await check('third user without couple cannot get a letter', eveNoLetter);
 
 // 4. Pocket notes.
 await asUser('mara', async (d) => {

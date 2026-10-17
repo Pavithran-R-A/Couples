@@ -12,6 +12,7 @@ import type {
   LetterResponse,
   Invitation,
   PocketNote,
+  WeeklyAdventure,
 } from '../domain/types';
 import type { BackendAdapter } from './BackendAdapter';
 import { QUESTIONS, questionForIndex } from '../domain/questions';
@@ -40,6 +41,7 @@ interface DemoData {
   milestones: Milestone[];
   moods: MoodCheckIn[];
   pocketNotes: PocketNote[];
+  weeklyAdventure: WeeklyAdventure | null;
   seeded: boolean;
 }
 
@@ -57,6 +59,7 @@ function freshData(): DemoData {
     milestones: [],
     moods: [],
     pocketNotes: [],
+    weeklyAdventure: null,
     seeded: false,
   };
 }
@@ -172,6 +175,20 @@ export class DemoRepository implements BackendAdapter {
       { id: 'demo-ms-3', coupleId: 'demo-couple', kind: 'first_memory', achievedAt: new Date(Date.now() - 30 * 86400000).toISOString(), label: 'First keepsake pressed' },
       { id: 'demo-ms-4', coupleId: 'demo-couple', kind: 'anniversary', achievedAt: this.data.couple!.anniversary + 'T09:00:00.000Z', label: 'The day we met, three years ago' },
     ];
+    const monday = new Date();
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    this.data.weeklyAdventure = {
+      id: 'demo-adventure-1',
+      coupleId: 'demo-couple',
+      weekOf: monday.toISOString().slice(0, 10),
+      kind: 'tiny_date',
+      title: 'Dessert first tonight',
+      detail: 'Eat your dessert before dinner tonight. Rules are suspended.',
+      partnerADone: true,
+      partnerBDone: false,
+      partnerAEntry: 'Strawberries and cream, eaten before the pasta water even boiled.',
+      partnerBEntry: null,
+    };
     this.data.pocketNotes = [
       { id: 'demo-note-1', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.b.id, body: 'Left the last cardamom bun for you. Evidence withheld.', createdAt: new Date(Date.now() - 3 * 3600000).toISOString(), readAt: null },
       { id: 'demo-note-2', coupleId: 'demo-couple', authorId: DEMO_PARTNERS.a.id, body: 'The basil says hello. It grew a whole new leaf overnight.', createdAt: new Date(Date.now() - 26 * 3600000).toISOString(), readAt: DEMO_PARTNERS.a.id ? new Date(Date.now() - 25 * 3600000).toISOString() : null },
@@ -516,6 +533,31 @@ export class DemoRepository implements BackendAdapter {
       daysTogether: couple?.anniversary ? daysBetween(couple.anniversary, todayISO()) : 0,
     };
   }
+  async getWeeklyAdventure(): Promise<WeeklyAdventure | null> {
+    await this.load();
+    const me = await this.getMyProfile();
+    if (!me?.coupleId) return null;
+    return this.data.weeklyAdventure;
+  }
+
+  async completeAdventure(id: string, entry: string): Promise<WeeklyAdventure> {
+    await this.load();
+    const me = await this.getMyProfile();
+    const adv = this.data.weeklyAdventure;
+    if (!me?.coupleId || !adv || adv.id !== id) throw new Error('Adventure not found');
+    const clean = entry.trim().slice(0, 500);
+    const isA = me.id === (this.data.couple?.partnerAId ?? '');
+    if (isA) {
+      adv.partnerADone = true;
+      adv.partnerAEntry = adv.partnerAEntry ?? clean ?? null;
+    } else {
+      adv.partnerBDone = true;
+      adv.partnerBEntry = adv.partnerBEntry ?? clean ?? null;
+    }
+    await this.save();
+    return { ...adv };
+  }
+
 }
 
 const DEMO_ANSWERS_A = [

@@ -12,6 +12,7 @@ import type {
   LetterResponse,
   Invitation,
   PocketNote,
+  WeeklyAdventure,
 } from '../domain/types';
 
 export interface BackendAdapter {
@@ -64,4 +65,8 @@ export interface BackendAdapter {
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;
   getStats(): Promise<{ lettersCompleted: number; memoriesCount: number; daysTogether: number }>;
+
+  // Weekly adventures (one small cooperative activity per couple per week)
+  getWeeklyAdventure(): Promise<WeeklyAdventure | null>;
+  completeAdventure(id: string, entry: string): Promise<WeeklyAdventure>;
 }

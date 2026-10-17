@@ -1,40 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, Ellipse, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { useSharedValue, withRepeat, withTiming, Easing } from 'react-native-reanimated';
+import { View, StyleSheet, Pressable } from 'react-native';
+import Svg, { Path, Circle, Ellipse, Defs, LinearGradient, Stop, RadialGradient } from 'react-native-svg';
 import type { CompanionMood } from '../domain/types';
-import { colors } from '../theme/tokens';
+import { useApp } from '../providers/AppProvider';
+import { brand } from '../theme/tokens';
 
 interface Props {
   mood: CompanionMood;
   affection: number; // 0..100 — glow intensity derives from this
   size?: number;
-  reducedMotion?: boolean;
+  onPress?: () => void;
 }
 
-// Original three-leaf lantern-seed companion.
-// A warm seed body that glows with affection, crowned by three leaves whose
-// posture follows its mood. All original vector artwork. Breathing/sway are
-// driven by shared values so a future animated layer can read them; the
-// drawn glyph re-renders per state change (cheap, and reduced-motion safe).
-export function LanternSeed({ mood, affection, size = 140, reducedMotion = false }: Props) {
-  const breath = useSharedValue(0);
-  const sway = useSharedValue(0);
+// LUMI — original lantern-seed companion. Leaf-like ears, softly glowing
+// core, oversized expressive eyes, blush. Drawn entirely for Project Two;
+// resembles no existing character.
+export function LanternSeed({ mood, affection, size = 160, onPress }: Props) {
+  const { theme, reducedMotion } = useApp();
   const [blinkOpen, setBlinkOpen] = useState(true);
-
-  useEffect(() => {
-    if (reducedMotion) return;
-    breath.value = withRepeat(
-      withTiming(1, { duration: 3200, easing: Easing.inOut(Easing.quad) }),
-      -1,
-      true
-    );
-    sway.value = withRepeat(
-      withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true
-    );
-  }, [reducedMotion, breath, sway]);
+  const [squish, setSquish] = useState(false);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -45,76 +29,139 @@ export function LanternSeed({ mood, affection, size = 140, reducedMotion = false
     return () => clearInterval(timer);
   }, [reducedMotion]);
 
-  const glow = 0.25 + (affection / 100) * 0.55;
+  const glow = 0.3 + (affection / 100) * 0.6;
+  const coreColor = mood === 'sleepy' ? '#B7A6E8' : brand.honeyGold;
 
   const mouthPath = useMemo(() => {
-    if (mood === 'delighted') return 'M 84 118 Q 100 134 116 118';
-    if (mood === 'sleepy') return 'M 88 122 Q 100 128 112 122';
-    if (mood === 'cared') return 'M 88 120 Q 100 130 112 120';
-    return 'M 90 121 Q 100 127 110 121';
+    if (mood === 'delighted') return 'M 86 128 Q 100 144 114 128';
+    if (mood === 'sleepy') return 'M 90 132 Q 100 138 110 132';
+    if (mood === 'cared') return 'M 88 130 Q 100 140 112 130';
+    if (mood === 'greeting') return 'M 88 128 Q 100 138 112 128';
+    return 'M 90 131 Q 100 136 110 131';
   }, [mood]);
 
+  // ear posture follows mood
+  const earDroop = mood === 'sleepy' ? 10 : mood === 'delighted' ? -6 : 0;
+
+  const handlePress = () => {
+    if (reducedMotion) return;
+    setSquish(true);
+    setTimeout(() => setSquish(false), 220);
+    onPress?.();
+  };
+
+  const body = (
+    <Svg width={size} height={size * 1.2} viewBox="0 0 200 240">
+      <Defs>
+        <RadialGradient id="lumiHalo" cx="0.5" cy="0.5" rx="0.5" ry="0.5">
+          <Stop offset="0" stopColor={coreColor} stopOpacity={glow * 0.55} />
+          <Stop offset="1" stopColor={coreColor} stopOpacity={0} />
+        </RadialGradient>
+        <LinearGradient id="lumiBody" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={theme.mode === 'moonlit' ? '#4A3A5E' : '#F3E4C8'} />
+          <Stop offset="1" stopColor={theme.mode === 'moonlit' ? '#332747' : '#E7D2A8'} />
+        </LinearGradient>
+        <LinearGradient id="lumiLeaf" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#A9D6C4" />
+          <Stop offset="1" stopColor="#5E9B85" />
+        </LinearGradient>
+        <RadialGradient id="lumiCore" cx="0.5" cy="0.42" rx="0.55" ry="0.55">
+          <Stop offset="0" stopColor="#FFF6DE" stopOpacity={glow} />
+          <Stop offset="1" stopColor={coreColor} stopOpacity={glow * 0.5} />
+        </RadialGradient>
+      </Defs>
+
+      {/* halo */}
+      <Circle cx={100} cy={128} r={92} fill="url(#lumiHalo)" />
+
+      {/* stem */}
+      <Path
+        d={`M 100 66 Q 98 ${50 + earDroop} 100 ${40 + earDroop}`}
+        stroke="#5E9B85"
+        strokeWidth={5}
+        fill="none"
+        strokeLinecap="round"
+      />
+
+      {/* leaf ears — posture follows mood */}
+      <Path
+        d={`M 100 ${54 + earDroop} Q 64 ${30 + earDroop} 40 ${46 + earDroop} Q 60 ${68 + earDroop} 100 ${60 + earDroop} Z`}
+        fill="url(#lumiLeaf)"
+      />
+      <Path
+        d={`M 100 ${44 + earDroop} Q 96 ${18 + earDroop} 100 ${10 + earDroop} Q 118 ${18 + earDroop} 114 ${40 + earDroop} Q 107 ${47 + earDroop} 100 ${44 + earDroop} Z`}
+        fill="#7FB89F"
+      />
+      <Path
+        d={`M 100 ${54 + earDroop} Q 136 ${30 + earDroop} 160 ${46 + earDroop} Q 140 ${68 + earDroop} 100 ${60 + earDroop} Z`}
+        fill="url(#lumiLeaf)"
+      />
+      {/* leaf veins */}
+      <Path d={`M 96 ${58 + earDroop} Q 70 ${48 + earDroop} 50 ${50 + earDroop}`} stroke="#FFF8F1" strokeWidth={1.5} fill="none" opacity={0.55} />
+      <Path d={`M 104 ${58 + earDroop} Q 130 ${48 + earDroop} 150 ${50 + earDroop}`} stroke="#FFF8F1" strokeWidth={1.5} fill="none" opacity={0.55} />
+
+      {/* body */}
+      <Path
+        d="M 100 66 C 152 66 174 112 168 150 C 162 192 136 218 100 218 C 64 218 38 192 32 150 C 26 112 48 66 100 66 Z"
+        fill="url(#lumiBody)"
+      />
+
+      {/* glowing core */}
+      <Ellipse cx={100} cy={138} rx={48} ry={56} fill="url(#lumiCore)" />
+      <Ellipse cx={100} cy={138} rx={48} ry={56} fill="none" stroke={coreColor} strokeWidth={1.4} opacity={glow * 0.6} />
+
+      {/* delighted spark */}
+      {mood === 'delighted' && (
+        <Path d="M 156 84 L 160 72 L 164 84 L 176 88 L 164 92 L 160 104 L 156 92 L 144 88 Z" fill={brand.honeyGold} />
+      )}
+      {mood === 'greeting' && (
+        <>
+          <Circle cx={40} cy={92} r={2.4} fill={brand.honeyGold} opacity={0.85} />
+          <Circle cx={166} cy={100} r={1.9} fill={brand.roseCoral} opacity={0.85} />
+        </>
+      )}
+
+      {/* eyes — oversized, expressive */}
+      {mood === 'sleepy' ? (
+        <>
+          <Path d="M 72 122 Q 84 132 96 122" stroke={theme.ink} strokeWidth={4} fill="none" strokeLinecap="round" />
+          <Path d="M 106 122 Q 118 132 130 122" stroke={theme.ink} strokeWidth={4} fill="none" strokeLinecap="round" />
+          <Path d="M 96 108 Q 100 104 104 108" stroke={theme.ink} strokeWidth={2.4} fill="none" strokeLinecap="round" opacity={0.7} />
+        </>
+      ) : (
+        <>
+          <Ellipse cx={82} cy={120} rx={9} ry={blinkOpen ? 12.5 : 2} fill={theme.ink} />
+          <Ellipse cx={118} cy={120} rx={9} ry={blinkOpen ? 12.5 : 2} fill={theme.ink} />
+          {!blinkOpen ? null : (
+            <>
+              <Circle cx={85} cy={115} r={3} fill="#FFF8F1" />
+              <Circle cx={121} cy={115} r={3} fill="#FFF8F1" />
+            </>
+          )}
+          {/* blush */}
+          <Ellipse cx={66} cy={136} rx={8} ry={4.6} fill={brand.roseCoral} opacity={mood === 'cared' ? 0.5 : 0.32} />
+          <Ellipse cx={134} cy={136} rx={8} ry={4.6} fill={brand.roseCoral} opacity={mood === 'cared' ? 0.5 : 0.32} />
+        </>
+      )}
+      <Path d={mouthPath} stroke={theme.ink} strokeWidth={3.2} fill="none" strokeLinecap="round" />
+    </Svg>
+  );
+
+  if (!onPress) {
+    return (
+      <View style={[styles.wrap, { width: size, height: size * 1.2 }, squish && { transform: [{ scale: 0.97 }] }]}>
+        {body}
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.wrap, { width: size, height: size * 1.15 }]}>
-      <View style={[styles.halo, { opacity: reducedMotion ? glow * 0.5 : 0.6 }]}>
-        <Circle cx={100} cy={105} r={82} fill={colors.brass} fillOpacity={0.12} />
-      </View>
-      <View style={reducedMotion ? undefined : { transform: [{ rotate: '-1.2deg' }] }}>
-        <Svg width={size} height={size * 1.15} viewBox="0 0 200 230">
-          <Defs>
-            <LinearGradient id="seedGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#F3E4C8" />
-              <Stop offset="1" stopColor="#E7D2A8" />
-            </LinearGradient>
-            <LinearGradient id="leafA" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor="#A9BCA6" />
-              <Stop offset="1" stopColor={colors.sage} />
-            </LinearGradient>
-          </Defs>
-
-          <Path d="M 100 52 Q 98 38 100 26" stroke="#7E8E7C" strokeWidth={5} fill="none" strokeLinecap="round" />
-
-          <Path d="M 100 40 Q 68 18 44 34 Q 62 54 100 46 Z" fill="url(#leafA)" />
-          <Path d="M 100 30 Q 96 6 100 0 Q 116 8 112 28 Q 106 34 100 30 Z" fill="#8FA38D" />
-          <Path d="M 100 40 Q 132 18 156 34 Q 138 54 100 46 Z" fill="url(#leafA)" />
-          <Path d="M 96 42 Q 72 32 52 36" stroke="#F6F0E6" strokeWidth={1.6} fill="none" opacity={0.6} />
-          <Path d="M 104 42 Q 128 32 148 36" stroke="#F6F0E6" strokeWidth={1.6} fill="none" opacity={0.6} />
-
-          <Path
-            d="M 100 52 C 148 52 168 96 162 132 C 156 172 132 196 100 196 C 68 196 44 172 38 132 C 32 96 52 52 100 52 Z"
-            fill="url(#seedGrad)"
-          />
-          <Path d="M 62 100 Q 100 92 138 100" stroke="#C9B07E" strokeWidth={1.4} fill="none" opacity={0.55} />
-          <Path d="M 56 130 Q 100 122 144 130" stroke="#C9B07E" strokeWidth={1.4} fill="none" opacity={0.55} />
-          <Path d="M 64 158 Q 100 152 136 158" stroke="#C9B07E" strokeWidth={1.4} fill="none" opacity={0.55} />
-
-          <Ellipse cx={100} cy={128} rx={44} ry={52} fill="#FFF3D6" fillOpacity={reducedMotion ? glow : glow * 0.85} />
-
-          {mood === 'sleepy' ? (
-            <>
-              <Path d="M 76 108 Q 86 116 96 108" stroke={colors.ink} strokeWidth={3.4} fill="none" strokeLinecap="round" />
-              <Path d="M 106 108 Q 116 116 126 108" stroke={colors.ink} strokeWidth={3.4} fill="none" strokeLinecap="round" />
-            </>
-          ) : (
-            <>
-              <Ellipse cx={84} cy={106} rx={5.5} ry={blinkOpen ? 7.5 : 1.4} fill={colors.ink} />
-              <Ellipse cx={118} cy={106} rx={5.5} ry={blinkOpen ? 7.5 : 1.4} fill={colors.ink} />
-              <Circle cx={70} cy={120} r={6} fill={colors.oxide} fillOpacity={0.22} />
-              <Circle cx={132} cy={120} r={6} fill={colors.oxide} fillOpacity={0.22} />
-            </>
-          )}
-          <Path d={mouthPath} stroke={colors.ink} strokeWidth={3} fill="none" strokeLinecap="round" />
-
-          {mood === 'delighted' && (
-            <Path d="M 148 74 L 152 62 L 156 74 L 168 78 L 156 82 L 152 94 L 148 82 L 136 78 Z" fill={colors.brass} />
-          )}
-        </Svg>
-      </View>
-    </View>
+    <Pressable onPress={handlePress} style={({ pressed }) => [styles.wrap, { width: size, height: size * 1.2 }, (squish || pressed) && { transform: [{ scale: 0.96 }] }]}>
+      {body}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center' },
-  halo: { position: 'absolute', width: 200, height: 200, borderRadius: 100 },
 });

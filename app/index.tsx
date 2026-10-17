@@ -1,15 +1,15 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
-import { colors } from '@/theme/tokens';
 import { EngravedDivider } from '@/components/Ornaments';
-import { SectionLabel } from '@/theme/ui';
-import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC } from '@/theme/fonts';
-import { Text } from 'react-native';
+import { SectionLabel, useTheme } from '@/theme/ui';
+import { FONT_HEAD, FONT_EDITORIAL } from '@/theme/fonts';
+import { Constellation } from '@/components/Illustrations';
 
 export default function Welcome() {
   const { authReady, session, mode } = useApp();
+  const theme = useTheme();
   const router = useRouter();
 
   useEffect(() => {
@@ -21,23 +21,26 @@ export default function Welcome() {
   }, [authReady, session, mode, router]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.mode === 'moonlit' ? theme.bgDeep : theme.bg }]}>
+      <Constellation size={120} variant={0} color={theme.gold} />
       <View style={styles.mark}>
-        <Text style={styles.markGlyph}>❦</Text>
+        <Text style={[styles.markGlyph, { color: theme.coral }]}>❦</Text>
       </View>
-      <SectionLabel>Project Two</SectionLabel>
-      <Text style={styles.title}>A quiet place{'\n'}for two.</Text>
-      <EngravedDivider />
-      <Text style={styles.subtitle}>One small moment, every day.</Text>
-      {!authReady && <ActivityIndicator color={colors.oxide} style={{ marginTop: 32 }} />}
+      <SectionLabel theme={theme}>Project Two</SectionLabel>
+      <Text style={[styles.title, { color: theme.ink }]}>A quiet place{'\n'}for two.</Text>
+      <EngravedDivider width={200} />
+      <Text style={[styles.subtitle, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 19 }]}>
+        One small moment, every day.
+      </Text>
+      {!authReady && <ActivityIndicator color={theme.accent} style={{ marginTop: 32 }} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.parchment, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  mark: { marginBottom: 24 },
-  markGlyph: { fontSize: 44, color: colors.oxide, textAlign: 'center' },
-  title: { fontFamily: FONT_HEAD, fontSize: 40, color: colors.ink, textAlign: 'center', lineHeight: 48, marginBottom: 8 },
-  subtitle: { fontFamily: FONT_HEAD_ITALIC, fontSize: 16, color: colors.inkFaint, textAlign: 'center' },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 },
+  mark: { marginTop: 8 },
+  markGlyph: { fontSize: 44, textAlign: 'center' },
+  title: { fontFamily: FONT_HEAD, fontSize: 40, textAlign: 'center', lineHeight: 48, marginBottom: 4 },
+  subtitle: { textAlign: 'center' },
 });

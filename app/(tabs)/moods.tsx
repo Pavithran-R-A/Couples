@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, Pressable, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, Pressable, Modal } from 'react-native';
 import { Stack } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
-import { colors, spacing, radii } from '@/theme/tokens';
-import { Card, SectionLabel, Button, ErrorNote, EmptyState } from '@/theme/ui';
-import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC, FONT_BOLD, FONT_MEDIUM } from '@/theme/fonts';
+import { spacing, radii } from '@/theme/tokens';
+import { Card, SectionLabel, Button, ErrorNote, EmptyState, useTheme } from '@/theme/ui';
+import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC, FONT_BOLD, FONT_MEDIUM, FONT_EDITORIAL } from '@/theme/fonts';
 import { EngravedDivider } from '@/components/Ornaments';
 import { MemoryCard } from '@/components/MemoryCard';
+import { FlowerSprig, KeepsakeStamp, Constellation, Ribbon } from '@/components/Illustrations';
 import type { Memory, Milestone, MoodCheckIn } from '@/domain/types';
 
 const MOODS = ['☀️', '🌙', '🌿', '🔥', '☁️', '☕️'];
 
 export default function MoodsTab() {
-  const { backend, session } = useApp();
+  const { backend } = useApp();
+  const theme = useTheme();
   const [moods, setMoods] = useState<MoodCheckIn[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -91,8 +93,8 @@ export default function MoodsTab() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.oxide} />
+      <View style={[styles.center, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
@@ -100,142 +102,244 @@ export default function MoodsTab() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <Text style={styles.eyebrow}>Your shared world</Text>
-        <Text style={styles.title}>Small things, kept.</Text>
-
-        <ErrorNote>{error}</ErrorNote>
-
-        <Card style={{ marginBottom: spacing.xl }}>
-          <SectionLabel>Share your mood</SectionLabel>
-          <Text style={styles.moodHint}>Explicitly shared — your partner sees it only when you post it.</Text>
-          <View style={styles.moodRow}>
-            {MOODS.map((m) => (
-              <Pressable
-                key={m}
-                onPress={() => setCheckInEmoji(m)}
-                style={[styles.moodChip, checkInEmoji === m && styles.moodChipActive]}
-              >
-                <Text style={{ fontSize: 22 }}>{m}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {checkInEmoji && (
-            <View style={{ marginTop: spacing.md }}>
-              <TextInput
-                value={checkInNote}
-                onChangeText={setCheckInNote}
-                placeholder="A few words, if you like"
-                placeholderTextColor={colors.inkFaint}
-                style={styles.noteInput}
-                maxLength={120}
-              />
-              <Button label="Share this feeling" onPress={checkIn} loading={checkInBusy} style={{ marginTop: spacing.md }} />
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>Your shared world</Text>
+              <Text style={[styles.title, { color: theme.ink }]}>Small things, kept.</Text>
             </View>
-          )}
-          {moods.length > 0 && (
-            <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
-              {moods.slice(0, 6).map((m) => (
-                <View key={m.id} style={styles.moodEntry}>
-                  <Text style={{ fontSize: 20 }}>{m.emoji}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.moodNote}>{m.note || '—'}</Text>
-                    <Text style={styles.moodWhen}>
-                      {new Date(m.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-                    </Text>
+            <FlowerSprig size={44} color={theme.coral} />
+          </View>
+
+          <ErrorNote theme={theme}>{error}</ErrorNote>
+
+          {/* mood check-in */}
+          <Card theme={theme} tone="soft" style={{ marginBottom: spacing.xl }}>
+            <SectionLabel theme={theme}>Share your mood</SectionLabel>
+            <Text style={[styles.moodHint, { color: theme.inkFaint }]}>
+              Explicitly shared — your partner sees it only when you post it.
+            </Text>
+            <View style={styles.moodRow}>
+              {MOODS.map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => setCheckInEmoji(m)}
+                  style={[
+                    styles.moodChip,
+                    { backgroundColor: theme.surface, borderColor: theme.line },
+                    checkInEmoji === m && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
+                  ]}
+                >
+                  <Text style={{ fontSize: 22 }}>{m}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {checkInEmoji && (
+              <View style={{ marginTop: spacing.md }}>
+                <TextInput
+                  value={checkInNote}
+                  onChangeText={setCheckInNote}
+                  placeholder="A few words, if you like"
+                  placeholderTextColor={theme.inkFaint}
+                  style={[styles.noteInput, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.ink }]}
+                  maxLength={120}
+                />
+                <Button label="Share this feeling" onPress={checkIn} loading={checkInBusy} theme={theme} style={{ marginTop: spacing.md }} />
+              </View>
+            )}
+            {moods.length > 0 && (
+              <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
+                {moods.slice(0, 6).map((m) => (
+                  <View key={m.id} style={[styles.moodEntry, { borderBottomColor: theme.lineSoft }]}>
+                    <Text style={{ fontSize: 20 }}>{m.emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.moodNote, { color: theme.ink }]}>{m.note || '—'}</Text>
+                      <Text style={[styles.moodWhen, { color: theme.inkFaint }]}>
+                        {new Date(m.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                      </Text>
+                    </View>
                   </View>
+                ))}
+              </View>
+            )}
+          </Card>
+
+          {/* milestones as a ribbon shelf */}
+          <View style={styles.milestoneHeader}>
+            <SectionLabel theme={theme}>Milestones</SectionLabel>
+            <Constellation size={70} variant={1} color={theme.gold} />
+          </View>
+          {milestones.length === 0 ? (
+            <Text style={[styles.emptyLine, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 16 }]}>
+              Milestones appear as your story unfolds.
+            </Text>
+          ) : (
+            <View style={{ marginBottom: spacing.xl, gap: spacing.sm }}>
+              {milestones.slice(0, 5).map((ms, i) => (
+                <View key={ms.id} style={[styles.milestoneRow, { backgroundColor: theme.surface, borderColor: theme.line }]}>
+                  <KeepsakeStamp size={30} tone={i % 2 === 0 ? theme.gold : theme.coral} glyph={i % 2 === 0 ? 'seed' : 'flower'} />
+                  <Text style={[styles.milestoneLabel, { color: theme.ink }]}>{ms.label}</Text>
                 </View>
               ))}
             </View>
           )}
-        </Card>
 
-        <SectionLabel>Milestones</SectionLabel>
-        {milestones.length === 0 ? (
-          <Text style={styles.emptyLine}>Milestones appear as your story unfolds.</Text>
-        ) : (
-          <View style={{ marginBottom: spacing.xl, gap: spacing.sm }}>
-            {milestones.slice(0, 5).map((ms) => (
-              <View key={ms.id} style={styles.milestoneRow}>
-                <Text style={styles.milestoneGlyph}>✦</Text>
-                <Text style={styles.milestoneLabel}>{ms.label}</Text>
-              </View>
-            ))}
+          <EngravedDivider width={220} />
+
+          {/* keepsake scrapbook */}
+          <View style={[styles.memoryHeader, { marginTop: spacing.lg }]}>
+            <SectionLabel theme={theme}>Keepsakes</SectionLabel>
+            <Ribbon width={96} tone={theme.accent} text="kept" />
           </View>
-        )}
+          {memories.length === 0 ? (
+            <View style={[styles.scrapbookEmpty, { backgroundColor: theme.surfaceSoft, borderColor: theme.line }]}>
+              <KeepsakeStamp size={64} tone={theme.accent} glyph="seed" />
+              <Text style={[styles.scrapbookEmptyTitle, { color: theme.ink }]}>The first page is blank</Text>
+              <Text style={[styles.scrapbookEmptyText, { color: theme.inkSoft, fontFamily: FONT_EDITORIAL, fontSize: 16 }]}>
+                Press a note, a photo or a date here — something worth returning to together.
+              </Text>
+              <Button label="Keep a moment" onPress={() => setModalVisible(true)} theme={theme} style={{ marginTop: spacing.md }} />
+            </View>
+          ) : (
+            <>
+              <Pressable onPress={() => setModalVisible(true)} style={styles.addMemoryHit}>
+                <Text style={[styles.addMemory, { color: theme.accent }]}>+ Keep a moment</Text>
+              </Pressable>
+              {memories.map((m, i) => (
+                <MemoryCard
+                  key={m.id}
+                  memory={m}
+                  onEdit={() => setModalVisible(true)}
+                  onDelete={() => removeMemory(m.id)}
+                  theme={theme}
+                  variant={(i % 2) as 0 | 1}
+                />
+              ))}
+            </>
+          )}
 
-        <EngravedDivider />
-
-        <View style={[styles.memoryHeader, { marginTop: spacing.lg }]}>
-          <SectionLabel>Keepsakes</SectionLabel>
-          <Pressable onPress={() => setModalVisible(true)}>
-            <Text style={styles.addMemory}>+ Keep a moment</Text>
-          </Pressable>
-        </View>
-        {memories.length === 0 ? (
-          <EmptyState title="No keepsakes yet" subtitle="Keep a note, a photo or a date worth returning to." />
-        ) : (
-          memories.map((m) => (
-            <MemoryCard key={m.id} memory={m} onEdit={() => setModalVisible(true)} onDelete={() => removeMemory(m.id)} />
-          ))
-        )}
-
-        <Modal visible={modalVisible} animationType="slide" transparent>
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalSheet}>
-              <Text style={styles.modalTitle}>Keep a moment</Text>
-              <TextInput value={memTitle} onChangeText={setMemTitle} placeholder="What happened?" placeholderTextColor={colors.inkFaint} style={styles.titleInput} maxLength={80} />
-              <TextInput value={memNote} onChangeText={setMemNote} placeholder="Write the details..." placeholderTextColor={colors.inkFaint} style={[styles.titleInput, { minHeight: 100, textAlignVertical: 'top' }]} multiline maxLength={600} />
-              <Text style={styles.dateHint}>Date</Text>
-              <TextInput value={memDate} onChangeText={setMemDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.inkFaint} style={styles.titleInput} maxLength={10} />
-              <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg }}>
-                <View style={{ flex: 1 }}>
-                  <Button label="Save" onPress={addMemory} loading={memBusy} disabled={!memTitle.trim()} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Button label="Cancel" variant="quiet" onPress={() => setModalVisible(false)} />
+          <Modal visible={modalVisible} animationType="slide" transparent>
+            <View style={[styles.modalBackdrop, { backgroundColor: theme.scrim }]}>
+              <View style={[styles.modalSheet, { backgroundColor: theme.surface }]}>
+                <Text style={[styles.modalTitle, { color: theme.ink }]}>Keep a moment</Text>
+                <TextInput
+                  value={memTitle}
+                  onChangeText={setMemTitle}
+                  placeholder="What happened?"
+                  placeholderTextColor={theme.inkFaint}
+                  style={[styles.titleInput, { backgroundColor: theme.surfaceSoft, borderColor: theme.line, color: theme.ink }]}
+                  maxLength={80}
+                />
+                <TextInput
+                  value={memNote}
+                  onChangeText={setMemNote}
+                  placeholder="Write the details…"
+                  placeholderTextColor={theme.inkFaint}
+                  style={[
+                    styles.titleInput,
+                    { minHeight: 100, textAlignVertical: 'top', backgroundColor: theme.surfaceSoft, borderColor: theme.line, color: theme.ink },
+                  ]}
+                  multiline
+                  maxLength={600}
+                />
+                <Text style={[styles.dateHint, { color: theme.inkFaint }]}>Date</Text>
+                <TextInput
+                  value={memDate}
+                  onChangeText={setMemDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.inkFaint}
+                  style={[styles.titleInput, { backgroundColor: theme.surfaceSoft, borderColor: theme.line, color: theme.ink }]}
+                  maxLength={10}
+                />
+                <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg }}>
+                  <View style={{ flex: 1 }}>
+                    <Button label="Save" onPress={addMemory} loading={memBusy} disabled={!memTitle.trim()} theme={theme} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Button label="Cancel" variant="quiet" onPress={() => setModalVisible(false)} theme={theme} />
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        </Modal>
-      </ScrollView>
+          </Modal>
+        </ScrollView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.parchment },
-  content: { padding: spacing.xl, paddingTop: 72, paddingBottom: 48 },
-  center: { flex: 1, backgroundColor: colors.parchment, alignItems: 'center', justifyContent: 'center' },
-  eyebrow: { fontSize: 11.5, letterSpacing: 2, color: colors.inkFaint, fontFamily: FONT_BODY, textTransform: 'uppercase', marginBottom: 6 },
-  title: { fontFamily: FONT_HEAD, fontSize: 30, color: colors.ink, marginBottom: spacing.xl },
-  moodHint: { fontFamily: FONT_BODY, fontSize: 13, color: colors.inkFaint, marginBottom: spacing.md, lineHeight: 19 },
+  scroll: { flex: 1 },
+  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xl },
+  eyebrow: {
+    fontSize: 11.5,
+    letterSpacing: 2,
+    fontFamily: FONT_MEDIUM,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  title: { fontFamily: FONT_HEAD, fontSize: 30, lineHeight: 38, marginBottom: 0 },
+  moodHint: { fontFamily: FONT_BODY, fontSize: 13, marginBottom: spacing.md, lineHeight: 19 },
   moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   moodChip: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.parchment,
-    borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  moodChipActive: { borderColor: colors.oxide, backgroundColor: colors.oxideMist },
   noteInput: {
-    backgroundColor: colors.parchment, borderWidth: 1, borderColor: colors.line, borderRadius: radii.sm,
-    padding: spacing.md, fontSize: 14.5, fontFamily: FONT_BODY, color: colors.ink,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.md,
+    fontSize: 14.5,
+    fontFamily: FONT_BODY,
   },
-  moodEntry: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  moodNote: { fontFamily: FONT_MEDIUM, fontSize: 14, color: colors.ink },
-  moodWhen: { fontFamily: FONT_BODY, fontSize: 11.5, color: colors.inkFaint },
-  milestoneRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.chalk, borderRadius: radii.sm, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, padding: spacing.lg },
-  milestoneGlyph: { color: colors.brass, fontSize: 16 },
-  milestoneLabel: { fontFamily: FONT_MEDIUM, fontSize: 14.5, color: colors.ink },
-  emptyLine: { fontFamily: FONT_HEAD_ITALIC, fontSize: 14, color: colors.inkFaint, marginBottom: spacing.xl },
+  moodEntry: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  moodNote: { fontFamily: FONT_MEDIUM, fontSize: 14 },
+  moodWhen: { fontFamily: FONT_BODY, fontSize: 11.5 },
+  milestoneHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  milestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radii.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.lg,
+  },
+  milestoneLabel: { fontFamily: FONT_MEDIUM, fontSize: 14.5 },
+  emptyLine: { marginBottom: spacing.xl },
   memoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  addMemory: { fontFamily: FONT_BOLD, fontSize: 13.5, color: colors.oxide },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(29,41,39,0.45)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: colors.chalk, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.xl, gap: spacing.md },
-  modalTitle: { fontFamily: FONT_HEAD, fontSize: 22, color: colors.ink },
-  titleInput: {
-    backgroundColor: colors.parchment, borderWidth: 1, borderColor: colors.line, borderRadius: radii.sm,
-    padding: spacing.lg, fontSize: 15, fontFamily: FONT_BODY, color: colors.ink,
+  addMemoryHit: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', marginBottom: spacing.sm },
+  addMemory: { fontFamily: FONT_BOLD, fontSize: 13.5 },
+  scrapbookEmpty: {
+    alignItems: 'center',
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    padding: spacing.xxl,
+    gap: spacing.sm,
   },
-  dateHint: { fontFamily: FONT_BOLD, fontSize: 12, color: colors.inkFaint, textTransform: 'uppercase', letterSpacing: 1.5 },
+  scrapbookEmptyTitle: { fontFamily: FONT_HEAD, fontSize: 18 },
+  scrapbookEmptyText: { textAlign: 'center', lineHeight: 24, paddingHorizontal: spacing.sm },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end' },
+  modalSheet: {
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  modalTitle: { fontFamily: FONT_HEAD, fontSize: 22 },
+  titleInput: {
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.lg,
+    fontSize: 15,
+    fontFamily: FONT_BODY,
+  },
+  dateHint: { fontFamily: FONT_BOLD, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5 },
 });

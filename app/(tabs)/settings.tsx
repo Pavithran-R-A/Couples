@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Switch, Alert, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
-import { colors, spacing, radii } from '@/theme/tokens';
-import { Card, SectionLabel, Button, ErrorNote } from '@/theme/ui';
-import { FONT_HEAD, FONT_BODY, FONT_BOLD, FONT_MEDIUM } from '@/theme/fonts';
+import { spacing, radii, type ThemeMode } from '@/theme/tokens';
+import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
+import { FONT_HEAD, FONT_BODY, FONT_BOLD, FONT_MEDIUM, FONT_EDITORIAL } from '@/theme/fonts';
+import { KeepsakeStamp, Constellation } from '@/components/Illustrations';
 
 export default function SettingsTab() {
-  const { backend, demo, session, mode, refreshSession } = useApp();
+  const { backend, demo, session, mode, refreshSession, themeMode, setThemeMode, reducedMotion, setReducedMotion } = useApp();
+  const theme = useTheme();
   const router = useRouter();
-  const [reducedMotion, setReducedMotion] = useState(false);
   const [reminders, setReminders] = useState(true);
   const [profile, setProfile] = useState<{ displayName: string; email: string } | null>(null);
   const [partner, setPartner] = useState<string | null>(null);
@@ -71,11 +72,10 @@ export default function SettingsTab() {
 
   const exportData = async () => {
     try {
-      const data = await backend.exportData();
+      await backend.exportData();
       Alert.alert('Your data', 'A copy of your data has been prepared as JSON. In the packaged app this saves a file to your device.', [
         { text: 'OK' },
       ]);
-      return data;
     } catch {
       setError('Could not export your data right now');
     }
@@ -113,88 +113,163 @@ export default function SettingsTab() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <Text style={styles.eyebrow}>Settings</Text>
-        <Text style={styles.title}>Your space, your rules.</Text>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>Settings</Text>
+          <Text style={[styles.title, { color: theme.ink }]}>Your space, your rules.</Text>
 
-        <ErrorNote>{error}</ErrorNote>
+          <ErrorNote theme={theme}>{error}</ErrorNote>
 
-        <Card style={{ marginBottom: spacing.lg }}>
-          <SectionLabel>Account</SectionLabel>
-          <Text style={styles.value}>{profile?.displayName ?? 'Signed in'}</Text>
-          <Text style={styles.sub}>{session?.email}</Text>
-          <View style={{ marginTop: spacing.md }}>
-            <Button label="Sign out" variant="quiet" onPress={signOut} loading={busy} />
-          </View>
-        </Card>
-
-        <Card style={{ marginBottom: spacing.lg }}>
-          <SectionLabel>Couple</SectionLabel>
-          <Text style={styles.value}>{partner ? `Paired with ${partner}` : 'Not paired yet'}</Text>
-          {stats && (
-            <Text style={styles.sub}>
-              {stats.lettersCompleted} letters completed · {stats.memoriesCount} keepsakes
-              {stats.daysTogether > 0 ? ` · ${stats.daysTogether} days together` : ''}
-            </Text>
-          )}
-          {partner && (
+          <Card theme={theme} style={{ marginBottom: spacing.lg }}>
+            <SectionLabel theme={theme}>Account</SectionLabel>
+            <Text style={[styles.value, { color: theme.ink }]}>{profile?.displayName ?? 'Signed in'}</Text>
+            <Text style={[styles.sub, { color: theme.inkFaint }]}>{session?.email}</Text>
             <View style={{ marginTop: spacing.md }}>
-              <Button label="Unlink from partner" variant="quiet" onPress={unlink} />
-            </View>
-          )}
-        </Card>
-
-        <Card style={{ marginBottom: spacing.lg }}>
-          <SectionLabel>Comfort</SectionLabel>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Reduced motion</Text>
-            <Switch value={reducedMotion} onValueChange={setReducedMotion} trackColor={{ true: colors.sage, false: colors.line }} />
-          </View>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Gentle daily reminders</Text>
-            <Switch value={reminders} onValueChange={setReminders} trackColor={{ true: colors.sage, false: colors.line }} />
-          </View>
-          <Text style={styles.note}>
-            {reminders
-              ? 'One quiet nudge a day, at a fixed evening hour. Nothing else, ever.'
-              : 'Reminders are off. The letter waits for you whenever you come.'}
-          </Text>
-        </Card>
-
-        <Card style={{ marginBottom: spacing.lg }}>
-          <SectionLabel>Your data</SectionLabel>
-          <View style={{ gap: spacing.md }}>
-            <Button label="Export everything" variant="quiet" onPress={exportData} />
-            <Button label="Delete my account" variant="quiet" onPress={deleteAccount} />
-          </View>
-          <Text style={styles.note}>Export gives you a machine-readable copy. Deletion is permanent and complete.</Text>
-        </Card>
-
-        {mode === 'demo' && (
-          <Card style={{ marginBottom: spacing.lg, borderColor: colors.brass }}>
-            <SectionLabel color={colors.brass}>Demonstration mode</SectionLabel>
-            <Text style={styles.note}>You are exploring Project Two with fictional partners and synthetic data.</Text>
-            <View style={{ marginTop: spacing.md }}>
-              <Button label="Reset demo data" variant="ghost" onPress={resetDemo} />
+              <Button label="Sign out" variant="quiet" onPress={signOut} loading={busy} theme={theme} />
             </View>
           </Card>
-        )}
 
-        <Text style={styles.footer}>Project Two · Afterlight Atelier edition</Text>
-      </ScrollView>
+          <Card theme={theme} style={{ marginBottom: spacing.lg }}>
+            <SectionLabel theme={theme}>Couple</SectionLabel>
+            <Text style={[styles.value, { color: theme.ink }]}>{partner ? `Paired with ${partner}` : 'Not paired yet'}</Text>
+            {stats && (
+              <Text style={[styles.sub, { color: theme.inkFaint }]}>
+                {stats.lettersCompleted} letters completed · {stats.memoriesCount} keepsakes
+                {stats.daysTogether > 0 ? ` · ${stats.daysTogether} days together` : ''}
+              </Text>
+            )}
+            {partner && (
+              <View style={{ marginTop: spacing.md }}>
+                <Button label="Unlink from partner" variant="quiet" onPress={unlink} theme={theme} />
+              </View>
+            )}
+          </Card>
+
+          <Card theme={theme} style={{ marginBottom: spacing.lg }}>
+            <SectionLabel theme={theme}>Atmosphere</SectionLabel>
+            <Text style={[styles.themeHint, { color: theme.inkFaint }]}>Choose how your evenings feel.</Text>
+            <View style={styles.themeRow}>
+              {(['daylight', 'moonlit'] as ThemeMode[]).map((m) => {
+                const active = themeMode === m;
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => setThemeMode(m)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={[
+                      styles.themeCard,
+                      {
+                        backgroundColor: active ? theme.accentSoft : theme.surfaceSoft,
+                        borderColor: active ? theme.accent : theme.line,
+                      },
+                    ]}
+                  >
+                    {m === 'daylight' ? (
+                      <KeepsakeStamp size={34} tone={theme.coral} glyph="flower" />
+                    ) : (
+                      <Constellation size={44} variant={0} color={theme.gold} />
+                    )}
+                    <Text style={[styles.themeLabel, { color: active ? theme.accent : theme.inkSoft }]}>
+                      {m === 'daylight' ? 'Warm Daylight' : 'Moonlit Garden'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={[styles.switchRow, { borderBottomColor: theme.lineSoft }]}>
+              <Text style={[styles.switchLabel, { color: theme.ink }]}>Reduced motion</Text>
+              <Switch
+                value={reducedMotion}
+                onValueChange={setReducedMotion}
+                trackColor={{ true: theme.accent, false: theme.line }}
+                thumbColor={reducedMotion ? theme.surfaceRaised : theme.surface}
+              />
+            </View>
+            <View style={styles.switchRow}>
+              <Text style={[styles.switchLabel, { color: theme.ink }]}>Gentle daily reminders</Text>
+              <Switch
+                value={reminders}
+                onValueChange={setReminders}
+                trackColor={{ true: theme.accent, false: theme.line }}
+                thumbColor={reminders ? theme.surfaceRaised : theme.surface}
+              />
+            </View>
+            <Text style={[styles.note, { color: theme.inkFaint }]}>
+              {reminders
+                ? 'One quiet nudge a day, at a fixed evening hour. Nothing else, ever.'
+                : 'Reminders are off. The letter waits for you whenever you come.'}
+            </Text>
+          </Card>
+
+          <Card theme={theme} style={{ marginBottom: spacing.lg }}>
+            <SectionLabel theme={theme}>Your data</SectionLabel>
+            <View style={{ gap: spacing.md }}>
+              <Button label="Export everything" variant="quiet" onPress={exportData} theme={theme} />
+              <Button label="Delete my account" variant="quiet" onPress={deleteAccount} theme={theme} />
+            </View>
+            <Text style={[styles.note, { color: theme.inkFaint }]}>
+              Export gives you a machine-readable copy. Deletion is permanent and complete.
+            </Text>
+          </Card>
+
+          {mode === 'demo' && (
+            <Card theme={theme} tone="soft" style={{ marginBottom: spacing.lg, borderColor: theme.gold }}>
+              <SectionLabel theme={theme} color={theme.gold}>
+                Demonstration mode
+              </SectionLabel>
+              <Text style={[styles.note, { color: theme.inkSoft }]}>
+                You are exploring Project Two with fictional partners and synthetic data.
+              </Text>
+              <View style={{ marginTop: spacing.md }}>
+                <Button label="Reset demo data" variant="ghost" onPress={resetDemo} theme={theme} />
+              </View>
+            </Card>
+          )}
+
+          <Text style={[styles.footer, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 14.5 }]}>
+            Project Two · Midnight Postcards
+          </Text>
+        </ScrollView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.parchment },
-  content: { padding: spacing.xl, paddingTop: 72, paddingBottom: 48 },
-  eyebrow: { fontSize: 11.5, letterSpacing: 2, color: colors.inkFaint, fontFamily: FONT_BODY, textTransform: 'uppercase', marginBottom: 6 },
-  title: { fontFamily: FONT_HEAD, fontSize: 30, color: colors.ink, marginBottom: spacing.xl },
-  value: { fontFamily: FONT_HEAD, fontSize: 19, color: colors.ink },
-  sub: { fontFamily: FONT_BODY, fontSize: 13.5, color: colors.inkFaint, marginTop: 4 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm },
-  switchLabel: { fontFamily: FONT_MEDIUM, fontSize: 15, color: colors.ink },
-  note: { fontFamily: FONT_BODY, fontSize: 12.5, color: colors.inkFaint, lineHeight: 19, marginTop: spacing.sm },
-  footer: { fontFamily: FONT_BODY, fontSize: 12, color: colors.inkFaint, textAlign: 'center', marginTop: spacing.xl },
+  scroll: { flex: 1 },
+  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  eyebrow: {
+    fontSize: 11.5,
+    letterSpacing: 2,
+    fontFamily: FONT_MEDIUM,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  title: { fontFamily: FONT_HEAD, fontSize: 30, lineHeight: 38, marginBottom: spacing.xl },
+  value: { fontFamily: FONT_HEAD, fontSize: 19 },
+  sub: { fontFamily: FONT_BODY, fontSize: 13.5, marginTop: 4 },
+  themeHint: { fontFamily: FONT_BODY, fontSize: 13, marginBottom: spacing.md },
+  themeRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+  themeCard: {
+    flex: 1,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    padding: spacing.lg,
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 96,
+    justifyContent: 'center',
+  },
+  themeLabel: { fontFamily: FONT_BOLD, fontSize: 13.5 },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  switchLabel: { fontFamily: FONT_MEDIUM, fontSize: 15 },
+  note: { fontFamily: FONT_BODY, fontSize: 12.5, lineHeight: 19, marginTop: spacing.sm },
+  footer: { textAlign: 'center', marginTop: spacing.xl },
 });

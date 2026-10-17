@@ -9,25 +9,40 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { colors, radii, spacing } from './tokens';
-import { FONT_BOLD, FONT_BODY, FONT_MEDIUM } from './fonts';
+import { spacing, radii, type Theme } from './tokens';
+import { FONT_HEAD, FONT_BODY, FONT_MEDIUM, FONT_BOLD, FONT_EDITORIAL } from './fonts';
+import { useApp } from '../providers/AppProvider';
+
+export function useTheme(): Theme {
+  return useApp().theme;
+}
 
 export function Card({
   children,
   style,
+  theme,
+  tone = 'surface',
 }: {
   children: React.ReactNode;
   style?: ViewStyle | ViewStyle[];
+  theme: Theme;
+  tone?: 'surface' | 'soft' | 'raised';
 }) {
+  const bg = tone === 'soft' ? theme.surfaceSoft : tone === 'raised' ? theme.surfaceRaised : theme.surface;
   return (
     <View
       style={[
         {
-          backgroundColor: colors.chalk,
+          backgroundColor: bg,
           borderRadius: radii.lg,
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: colors.line,
+          borderColor: theme.line,
           padding: spacing.xl,
+          shadowColor: theme.shadowColor,
+          shadowOpacity: theme.shadowOpacity,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 2,
         },
         style,
       ]}
@@ -37,13 +52,21 @@ export function Card({
   );
 }
 
-export function SectionLabel({ children, color }: { children: string; color?: string }) {
+export function SectionLabel({
+  children,
+  color,
+  theme,
+}: {
+  children: string;
+  color?: string;
+  theme: Theme;
+}) {
   return (
     <Text
       style={{
         fontSize: 11.5,
         letterSpacing: 2.2,
-        color: color ?? colors.inkFaint,
+        color: color ?? theme.inkFaint,
         fontWeight: '600',
         marginBottom: spacing.sm,
         textTransform: 'uppercase',
@@ -54,23 +77,60 @@ export function SectionLabel({ children, color }: { children: string; color?: st
   );
 }
 
-export function Heading({ children, style }: { children: string; style?: TextStyle | TextStyle[] }) {
+export function Heading({
+  children,
+  style,
+  theme,
+}: {
+  children: string;
+  style?: TextStyle | TextStyle[];
+  theme: Theme;
+}) {
   return (
-    <Text style={[{ fontFamily: FONT_BOLD, fontSize: 26, color: colors.ink, lineHeight: 32 }, style]}>
+    <Text style={[{ fontFamily: FONT_HEAD, fontSize: 26, color: theme.ink, lineHeight: 32 }, style]}>
       {children}
     </Text>
   );
 }
 
-export function Body({ children, style }: { children: string; style?: TextStyle | TextStyle[] }) {
+export function Body({
+  children,
+  style,
+  theme,
+}: {
+  children: string;
+  style?: TextStyle | TextStyle[];
+  theme: Theme;
+}) {
   return (
-    <Text style={[{ fontFamily: FONT_BODY, fontSize: 15.5, color: colors.inkSoft, lineHeight: 24 }, style]}>
+    <Text style={[{ fontFamily: FONT_BODY, fontSize: 15.5, color: theme.inkSoft, lineHeight: 24 }, style]}>
       {children}
     </Text>
   );
 }
 
-type BtnVariant = 'primary' | 'ghost' | 'quiet';
+export function EditorialAccent({
+  children,
+  style,
+  theme,
+}: {
+  children: string;
+  style?: TextStyle | TextStyle[];
+  theme: Theme;
+}) {
+  return (
+    <Text
+      style={[
+        { fontFamily: FONT_EDITORIAL, fontSize: 19, color: theme.coral, lineHeight: 26 },
+        style,
+      ]}
+    >
+      {children}
+    </Text>
+  );
+}
+
+type BtnVariant = 'primary' | 'ghost' | 'quiet' | 'gold';
 
 export function Button({
   label,
@@ -80,6 +140,7 @@ export function Button({
   loading,
   style,
   italic,
+  theme,
 }: {
   label: string;
   onPress: () => void;
@@ -88,16 +149,22 @@ export function Button({
   loading?: boolean;
   style?: ViewStyle | ViewStyle[];
   italic?: boolean;
+  theme: Theme;
 }) {
-  const bg = variant === 'primary' ? colors.ink : 'transparent';
-  const fg = variant === 'primary' ? colors.chalk : variant === 'ghost' ? colors.oxide : colors.inkSoft;
+  const palette: Record<BtnVariant, { bg: string; fg: string; border?: string }> = {
+    primary: { bg: theme.accent, fg: theme.accentOn },
+    gold: { bg: theme.gold, fg: theme.mode === 'moonlit' ? theme.inkOnColor : '#3E2F14' },
+    ghost: { bg: 'transparent', fg: theme.accent, border: theme.accent },
+    quiet: { bg: 'transparent', fg: theme.inkSoft },
+  };
+  const v = palette[variant];
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         {
-          backgroundColor: bg,
+          backgroundColor: v.bg,
           borderRadius: radii.md,
           minHeight: 52,
           paddingHorizontal: spacing.xl,
@@ -105,18 +172,18 @@ export function Button({
           justifyContent: 'center',
           flexDirection: 'row',
           gap: spacing.sm,
-          opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
+          opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
         },
-        variant === 'ghost' && { borderWidth: 1.5, borderColor: colors.oxide },
+        v.border && { borderWidth: 1.5, borderColor: v.border },
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={fg} />
+        <ActivityIndicator color={v.fg} />
       ) : (
         <Text
           style={{
-            color: fg,
+            color: v.fg,
             fontFamily: FONT_BOLD,
             fontSize: 15,
             fontStyle: italic ? 'italic' : 'normal',
@@ -138,6 +205,7 @@ export function Input({
   keyboardType = 'default',
   multiline,
   style,
+  theme,
 }: {
   value: string;
   onChangeText: (t: string) => void;
@@ -147,28 +215,29 @@ export function Input({
   keyboardType?: 'default' | 'email-address';
   multiline?: boolean;
   style?: TextStyle | TextStyle[];
+  theme: Theme;
 }) {
   return (
     <TextInput
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={colors.inkFaint}
+      placeholderTextColor={theme.inkFaint}
       secureTextEntry={secureTextEntry}
       autoCapitalize={autoCapitalize}
       keyboardType={keyboardType}
       multiline={multiline}
       style={[
         {
-          backgroundColor: colors.chalk,
+          backgroundColor: theme.surfaceSoft,
           borderWidth: 1,
-          borderColor: colors.line,
+          borderColor: theme.line,
           borderRadius: radii.sm,
           paddingHorizontal: spacing.lg,
           paddingVertical: spacing.md,
           fontSize: 15.5,
           fontFamily: FONT_MEDIUM,
-          color: colors.ink,
+          color: theme.ink,
         },
         multiline && { minHeight: 120, textAlignVertical: 'top', lineHeight: 24 },
         style,
@@ -177,47 +246,98 @@ export function Input({
   );
 }
 
-export function ErrorNote({ children }: { children: string }) {
+export function ErrorNote({ children, theme }: { children: string; theme: Theme }) {
   if (!children) return null;
   return (
     <View
       style={{
-        backgroundColor: '#F6E3DE',
+        backgroundColor: theme.dangerSoft,
         borderRadius: radii.sm,
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.md,
         marginBottom: spacing.md,
       }}
     >
-      <Text style={{ color: colors.danger, fontFamily: FONT_MEDIUM, fontSize: 13.5 }}>{children}</Text>
+      <Text style={{ color: theme.danger, fontFamily: FONT_MEDIUM, fontSize: 13.5 }}>{children}</Text>
     </View>
   );
 }
 
-export function Pill({ children, tone = 'sage' }: { children: string; tone?: 'sage' | 'oxide' | 'brass' }) {
-  const bg = tone === 'sage' ? colors.sageMist : tone === 'oxide' ? colors.oxideMist : colors.brassMist;
-  const fg = tone === 'sage' ? '#4A5F4C' : tone === 'oxide' ? colors.oxideDeep : '#8A6F42';
+export function Pill({
+  children,
+  tone = 'mint',
+  theme,
+}: {
+  children: string;
+  tone?: 'mint' | 'coral' | 'gold' | 'plum';
+  theme: Theme;
+}) {
+  const map = {
+    mint: { bg: theme.mintSoft, fg: theme.mint },
+    coral: { bg: theme.coralSoft, fg: theme.coral },
+    gold: { bg: theme.goldSoft, fg: theme.gold },
+    plum: { bg: theme.accentSoft, fg: theme.accent },
+  } as const;
+  const c = map[tone];
   return (
-    <View style={{ backgroundColor: bg, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: 5, alignSelf: 'flex-start' }}>
-      <Text style={{ color: fg, fontFamily: FONT_MEDIUM, fontSize: 12 }}>{children}</Text>
+    <View
+      style={{
+        backgroundColor: c.bg,
+        borderRadius: radii.pill,
+        paddingHorizontal: spacing.md,
+        paddingVertical: 5,
+        alignSelf: 'flex-start',
+      }}
+    >
+      <Text style={{ color: c.fg, fontFamily: FONT_MEDIUM, fontSize: 12 }}>{children}</Text>
     </View>
   );
 }
 
-export function Loading({ label }: { label?: string }) {
+export function Loading({ label, theme }: { label?: string; theme: Theme }) {
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.parchment, gap: spacing.md }}>
-      <ActivityIndicator color={colors.oxide} />
-      {label ? <Text style={{ color: colors.inkFaint, fontFamily: FONT_BODY, fontSize: 13.5 }}>{label}</Text> : null}
+    <View
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.bg,
+        gap: spacing.md,
+      }}
+    >
+      <ActivityIndicator color={theme.accent} />
+      {label ? (
+        <Text style={{ color: theme.inkFaint, fontFamily: FONT_BODY, fontSize: 13.5 }}>{label}</Text>
+      ) : null}
     </View>
   );
 }
 
-export function EmptyState({ title, subtitle }: { title: string; subtitle?: string }) {
+export function EmptyState({
+  title,
+  subtitle,
+  theme,
+}: {
+  title: string;
+  subtitle?: string;
+  theme: Theme;
+}) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: spacing.xxxl, gap: spacing.sm }}>
-      <Text style={{ fontFamily: FONT_BOLD, fontSize: 17, color: colors.ink }}>{title}</Text>
-      {subtitle ? <Text style={{ fontFamily: FONT_BODY, fontSize: 14, color: colors.inkFaint, textAlign: 'center' }}>{subtitle}</Text> : null}
+      <Text style={{ fontFamily: FONT_HEAD, fontSize: 17, color: theme.ink }}>{title}</Text>
+      {subtitle ? (
+        <Text
+          style={{
+            fontFamily: FONT_EDITORIAL,
+            fontSize: 16,
+            color: theme.inkFaint,
+            textAlign: 'center',
+            lineHeight: 22,
+          }}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
     </View>
   );
 }

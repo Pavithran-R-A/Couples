@@ -5,10 +5,9 @@ import { View, ActivityIndicator } from 'react-native';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AppProvider, useApp } from '@/providers/AppProvider';
 import { useAppFonts } from '@/theme/fonts';
-import { colors } from '@/theme/tokens';
 
 function RootGate() {
-  const { authReady, session, backend, mode } = useApp();
+  const { authReady, session, backend, mode, theme } = useApp();
   const [needsPairing, setNeedsPairing] = useState<boolean | null>(null);
   const router = useRouter();
 
@@ -35,7 +34,7 @@ function RootGate() {
   }, [needsPairing, router]);
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.parchment } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="pairing" />
@@ -51,16 +50,21 @@ export default function RootLayout() {
 
   if (!loaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.parchment, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.oxide} />
+      <View style={{ flex: 1, backgroundColor: '#FFF8F1', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color="#533755" />
       </View>
     );
   }
 
   return (
     <AppProvider>
-      <StatusBar style="dark" />
+      <RootChrome />
       <RootGate />
     </AppProvider>
   );
+}
+
+function RootChrome() {
+  const { theme } = useApp();
+  return <StatusBar style={theme.mode === 'moonlit' ? 'light' : 'dark'} />;
 }

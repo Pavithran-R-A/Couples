@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { colors } from '@/theme/tokens';
+import { useApp } from '@/providers/AppProvider';
 
 function TabIcon({ name, color }: { name: string; color: string }) {
   const iconColor = String(color);
@@ -44,15 +44,16 @@ function TabIcon({ name, color }: { name: string; color: string }) {
 }
 
 export default function TabsLayout() {
+  const { theme } = useApp();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.oxide,
-        tabBarInactiveTintColor: colors.inkFaint,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.inkFaint,
         tabBarStyle: {
-          backgroundColor: colors.chalk,
-          borderTopColor: colors.line,
+          backgroundColor: theme.mode === 'moonlit' ? theme.bgDeep : theme.surface,
+          borderTopColor: theme.line,
           height: 84,
           paddingTop: 8,
         },
@@ -65,7 +66,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="companion"
-        options={{ title: 'Companion', tabBarIcon: ({ color }) => <TabIcon name="companion" color={String(color)} /> }}
+        options={{ title: 'Lumi', tabBarIcon: ({ color }) => <TabIcon name="companion" color={String(color)} /> }}
       />
       <Tabs.Screen
         name="moods"

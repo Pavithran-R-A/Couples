@@ -11,15 +11,24 @@ import {
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
-import { colors, spacing, radii } from '@/theme/tokens';
-import { Card, SectionLabel, Button, ErrorNote, Pill, EmptyState } from '@/theme/ui';
-import { FONT_HEAD, FONT_BODY, FONT_HEAD_ITALIC, FONT_BOLD, FONT_MEDIUM } from '@/theme/fonts';
+import { spacing, radii } from '@/theme/tokens';
+import { Card, SectionLabel, Button, ErrorNote, Pill, EmptyState, useTheme } from '@/theme/ui';
+import {
+  FONT_HEAD,
+  FONT_BODY,
+  FONT_HEAD_ITALIC,
+  FONT_BOLD,
+  FONT_MEDIUM,
+  FONT_EDITORIAL,
+} from '@/theme/fonts';
 import { EngravedDivider, WaxSeal } from '@/components/Ornaments';
+import { EnvelopeArt, FlowerSprig, KeepsakeStamp, Constellation, GardenGround } from '@/components/Illustrations';
 import { ReactionRow } from '@/components/ReactionRow';
 import type { LetterResponse, Reaction } from '@/domain/types';
 
 export default function LettersTab() {
   const { backend, session, mode } = useApp();
+  const theme = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -91,159 +100,246 @@ export default function LettersTab() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.oxide} />
+      <View style={[styles.center, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
 
   const bothReplied = Boolean(myResponse && partnerResponse);
+  const envelopeOpen = bothReplied;
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.oxide} />}
-      >
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.eyebrow}>{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
-            <Text style={styles.title}>Today&apos;s letter</Text>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.accent} />}
+        >
+          {/* living-world header */}
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>
+                {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+              </Text>
+              <Text style={[styles.title, { color: theme.ink }]}>Today&apos;s letter</Text>
+            </View>
+            <WaxSeal size={42} />
           </View>
-          <WaxSeal />
-        </View>
 
-        <ErrorNote>{error}</ErrorNote>
+          <ErrorNote theme={theme}>{error}</ErrorNote>
 
-        {!letter ? (
-          <Card>
-            <EmptyState title="No letter yet" subtitle="Letters begin once you and your partner have paired." />
-            <Button label="Go to pairing" variant="ghost" onPress={() => router.push('/pairing')} />
-          </Card>
-        ) : (
-          <Card style={styles.letterCard}>
-            <SectionLabel color={colors.oxide}>Question of the day</SectionLabel>
-            <Text style={styles.question}>{letter.question.text}</Text>
-            <Pill tone="brass">{letter.question.category}</Pill>
-            <View style={{ marginTop: spacing.lg }}>
+          {!letter ? (
+            <Card theme={theme}>
+              <EmptyState theme={theme} title="No letter yet" subtitle="Letters begin once you and your partner have paired." />
+              <Button label="Go to pairing" variant="ghost" onPress={() => router.push('/pairing')} theme={theme} />
+            </Card>
+          ) : (
+            <View
+              style={[
+                styles.letterStage,
+                {
+                  backgroundColor: theme.mode === 'moonlit' ? theme.surface : theme.surfaceSoft,
+                  borderColor: envelopeOpen ? theme.gold : theme.line,
+                },
+              ]}
+            >
+              {/* the envelope — dominant visual */}
+              <View style={styles.envelopeRow}>
+                <EnvelopeArt
+                  size={132}
+                  open={envelopeOpen}
+                  flapColor={theme.accent}
+                  bodyColor={theme.mode === 'moonlit' ? '#3A2B3D' : '#EFE3EE'}
+                  sealColor={theme.coral}
+                  letterColor={theme.surfaceRaised}
+                />
+                {!envelopeOpen && <Constellation size={72} variant={1} color={theme.gold} />}
+              </View>
+
+              <View style={styles.categoryRow}>
+                <Pill tone="plum" theme={theme}>
+                  {letter.question.category}
+                </Pill>
+                <Text style={[styles.sealHint, { color: theme.inkFaint }]}>
+                  {envelopeOpen ? 'opened together' : 'answers hidden until you both write'}
+                </Text>
+              </View>
+
+              <Text style={[styles.question, { color: theme.ink }]}>{letter.question.text}</Text>
+
               {myResponse ? (
-                <View style={styles.answeredBox}>
-                  <Text style={styles.answeredLabel}>Your answer, sealed</Text>
-                  <Text style={styles.myAnswer}>{myResponse.body}</Text>
+                <View style={[styles.answeredBox, { backgroundColor: theme.surface, borderColor: theme.line }]}>
+                  <Text style={[styles.answeredLabel, { color: theme.gold }]}>Your answer, sealed</Text>
+                  <Text style={[styles.myAnswer, { color: theme.ink }]}>{myResponse.body}</Text>
                 </View>
               ) : (
                 <>
                   <TextInput
                     value={draft}
                     onChangeText={setDraft}
-                    placeholder="Write quietly, only you can see this until you both answer..."
-                    placeholderTextColor={colors.inkFaint}
+                    placeholder="Write quietly — only you can see this until you both answer…"
+                    placeholderTextColor={theme.inkFaint}
                     multiline
-                    style={styles.draftInput}
+                    style={[
+                      styles.draftInput,
+                      { backgroundColor: theme.surface, borderColor: theme.line, color: theme.ink },
+                    ]}
                   />
-                  <Button label="Seal and send" onPress={submit} loading={submitting} disabled={!draft.trim()} style={{ marginTop: spacing.md }} />
+                  <Button label="Seal and send" onPress={submit} loading={submitting} disabled={!draft.trim()} theme={theme} style={{ marginTop: spacing.md }} />
                 </>
               )}
             </View>
-          </Card>
-        )}
-
-        {bothReplied && partnerResponse && (
-          <Card style={styles.revealCard}>
-            <SectionLabel color={colors.oxide}>Revealed</SectionLabel>
-            <Text style={styles.partnerName}>{mode === 'demo' ? 'Theo' : 'Your partner'} wrote</Text>
-            <Text style={styles.partnerAnswer}>{partnerResponse.body}</Text>
-            <EngravedDivider />
-            <ReactionRow
-              onReact={react}
-              activeKind={reactions.find((r) => r.responseId === partnerResponse.id)?.kind ?? null}
-            />
-          </Card>
-        )}
-
-        {myResponse && !partnerResponse && (
-          <Card>
-            <Text style={styles.waitingTitle}>Sealed and waiting.</Text>
-            <Text style={styles.waitingText}>
-              Your answer is tucked away. The envelope opens only when you have both written.
-            </Text>
-          </Card>
-        )}
-
-        {!myResponse && partnerResponse && (
-          <Card>
-            <Text style={styles.waitingTitle}>A surprise waits.</Text>
-            <Text style={styles.waitingText}>
-              Something is already sealed in today&apos;s envelope. Write your answer to open it.
-            </Text>
-          </Card>
-        )}
-
-        <View style={{ marginTop: spacing.xl }}>
-          <SectionLabel>Recent letters</SectionLabel>
-          {history.length === 0 ? (
-            <Text style={styles.emptyHistory}>Your shared story starts with today&apos;s letter.</Text>
-          ) : (
-            history.slice(0, 10).map((h) => (
-              <Pressable key={h.letterId} style={styles.historyRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.historyQuestion} numberOfLines={1}>{h.question.text}</Text>
-                  <Text style={styles.historyDate}>
-                    {new Date(h.date + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-                  </Text>
-                </View>
-                <Pill tone={h.bothReplied ? 'sage' : 'brass'}>{h.bothReplied ? 'Revealed' : 'Waiting'}</Pill>
-              </Pressable>
-            ))
           )}
-        </View>
-      </ScrollView>
+
+          {bothReplied && partnerResponse && (
+            <Card theme={theme} tone="raised" style={[styles.revealCard, { borderColor: theme.gold }]}>
+              <SectionLabel theme={theme} color={theme.coral}>
+                Revealed
+              </SectionLabel>
+              <Text style={[styles.partnerName, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 17 }]}>
+                {mode === 'demo' ? 'Theo' : 'Your partner'} wrote
+              </Text>
+              <Text style={[styles.partnerAnswer, { color: theme.ink }]}>{partnerResponse.body}</Text>
+              <EngravedDivider width={220} />
+              <ReactionRow onReact={react} activeKind={reactions.find((r) => r.responseId === partnerResponse.id)?.kind ?? null} theme={theme} />
+            </Card>
+          )}
+
+          {myResponse && !partnerResponse && (
+            <View style={[styles.waitingCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.line }]}>
+              <FlowerSprig size={38} color={theme.coral} />
+              <Text style={[styles.waitingTitle, { color: theme.ink }]}>Sealed and waiting.</Text>
+              <Text style={[styles.waitingText, { color: theme.inkSoft }]}>
+                Your answer is tucked away. The envelope opens only when you have both written.
+              </Text>
+            </View>
+          )}
+
+          {!myResponse && partnerResponse && (
+            <View style={[styles.waitingCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.line }]}>
+              <KeepsakeStamp size={38} glyph="moon" tone={theme.accent} />
+              <Text style={[styles.waitingTitle, { color: theme.ink }]}>A surprise waits.</Text>
+              <Text style={[styles.waitingText, { color: theme.inkSoft }]}>
+                Something is already sealed in today&apos;s envelope. Write your answer to open it.
+              </Text>
+            </View>
+          )}
+
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionLabel theme={theme}>Recent letters</SectionLabel>
+            {history.length === 0 ? (
+              <Text style={[styles.emptyHistory, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 16 }]}>
+                Your shared story starts with today&apos;s letter.
+              </Text>
+            ) : (
+              history.slice(0, 10).map((h) => (
+                <Pressable key={h.letterId} style={[styles.historyRow, { borderBottomColor: theme.lineSoft }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.historyQuestion, { color: theme.ink }]} numberOfLines={1}>
+                      {h.question.text}
+                    </Text>
+                    <Text style={[styles.historyDate, { color: theme.inkFaint }]}>
+                      {new Date(h.date + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                    </Text>
+                  </View>
+                  <Pill tone={h.bothReplied ? 'mint' : 'gold'} theme={theme}>
+                    {h.bothReplied ? 'Revealed' : 'Waiting'}
+                  </Pill>
+                </Pressable>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.parchment },
-  content: { padding: spacing.xl, paddingTop: 72, paddingBottom: 48 },
-  center: { flex: 1, backgroundColor: colors.parchment, alignItems: 'center', justifyContent: 'center' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xl },
-  eyebrow: { fontSize: 11.5, letterSpacing: 2, color: colors.inkFaint, fontFamily: FONT_BODY, textTransform: 'uppercase', marginBottom: 6 },
-  title: { fontFamily: FONT_HEAD, fontSize: 32, color: colors.ink },
-  letterCard: { marginBottom: spacing.lg },
-  question: { fontFamily: FONT_HEAD, fontSize: 22, color: colors.ink, lineHeight: 30, marginBottom: spacing.md },
-  draftInput: {
-    backgroundColor: colors.parchment,
+  scroll: { flex: 1 },
+  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.xl,
+  },
+  eyebrow: {
+    fontSize: 11.5,
+    letterSpacing: 2,
+    fontFamily: FONT_MEDIUM,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  title: { fontFamily: FONT_HEAD, fontSize: 32, lineHeight: 40 },
+  letterStage: {
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.line,
+    padding: spacing.xl,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    shadowColor: '#151D32',
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+  },
+  envelopeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginBottom: spacing.md },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap', justifyContent: 'center' },
+  sealHint: { fontFamily: FONT_BODY, fontSize: 11.5, fontStyle: 'italic' },
+  question: {
+    fontFamily: FONT_HEAD,
+    fontSize: 22,
+    lineHeight: 30,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  draftInput: {
+    borderWidth: 1,
     borderRadius: radii.sm,
     minHeight: 130,
     padding: spacing.lg,
     fontSize: 15.5,
     fontFamily: FONT_MEDIUM,
-    color: colors.ink,
     textAlignVertical: 'top',
     lineHeight: 24,
+    alignSelf: 'stretch',
   },
-  answeredBox: { backgroundColor: colors.parchment, borderRadius: radii.sm, padding: spacing.lg, borderWidth: 1, borderColor: colors.line },
-  answeredLabel: { fontSize: 11, letterSpacing: 1.5, color: colors.brass, fontFamily: FONT_BOLD, textTransform: 'uppercase', marginBottom: 8 },
-  myAnswer: { fontFamily: FONT_BODY, fontSize: 15, color: colors.ink, lineHeight: 23 },
-  revealCard: { marginBottom: spacing.lg, borderColor: colors.brass },
-  partnerName: { fontFamily: FONT_HEAD_ITALIC, fontSize: 15, color: colors.inkFaint, marginBottom: spacing.sm },
-  partnerAnswer: { fontFamily: FONT_BODY, fontSize: 16, color: colors.ink, lineHeight: 25 },
-  waitingTitle: { fontFamily: FONT_HEAD, fontSize: 19, color: colors.ink, marginBottom: 8 },
-  waitingText: { fontFamily: FONT_BODY, fontSize: 14.5, color: colors.inkSoft, lineHeight: 22 },
+  answeredBox: { borderRadius: radii.sm, padding: spacing.lg, borderWidth: 1, alignSelf: 'stretch' },
+  answeredLabel: {
+    fontSize: 11,
+    letterSpacing: 1.5,
+    fontFamily: FONT_BOLD,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  myAnswer: { fontFamily: FONT_BODY, fontSize: 15, lineHeight: 23 },
+  revealCard: { marginBottom: spacing.lg },
+  partnerName: { marginBottom: spacing.sm },
+  partnerAnswer: { fontFamily: FONT_BODY, fontSize: 16, lineHeight: 25 },
+  waitingCard: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  waitingTitle: { fontFamily: FONT_HEAD, fontSize: 19 },
+  waitingText: { fontFamily: FONT_BODY, fontSize: 14.5, lineHeight: 22, textAlign: 'center' },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
     gap: spacing.md,
   },
-  historyQuestion: { fontFamily: FONT_MEDIUM, fontSize: 14.5, color: colors.ink },
-  historyDate: { fontFamily: FONT_BODY, fontSize: 12, color: colors.inkFaint, marginTop: 2 },
-  emptyHistory: { fontFamily: FONT_HEAD_ITALIC, fontSize: 14, color: colors.inkFaint },
+  historyQuestion: { fontFamily: FONT_MEDIUM, fontSize: 14.5 },
+  historyDate: { fontFamily: FONT_BODY, fontSize: 12, marginTop: 2 },
+  emptyHistory: {},
 });

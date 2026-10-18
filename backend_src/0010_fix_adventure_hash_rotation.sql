@@ -1,0 +1,8 @@
+-- Record of hosted migration 0010_fix_adventure_hash_rotation.
+-- hashtext() returns a signed int4; mod(negative, n) yields a negative
+-- index in Postgres, so titles[idx + 1] evaluated to NULL and adventure
+-- creation crashed with a not-null violation on weekly_adventures.kind for
+-- some (couple, week) pairs. Fix: abs() around both hashtext() uses.
+-- Body: identical to 0009's get_this_weeks_adventure() except:
+--   kind_pick := (array[...])[1 + mod(abs(hashtext(...)), 4)];
+--   idx := mod(abs(hashtext(...)), 6);

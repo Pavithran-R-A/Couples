@@ -116,5 +116,7 @@ jobs:
           }
           if (e.build.preview.android.buildType !== 'apk') throw new Error('preview must build apk');
           if (e.build.production.android.buildType !== 'app-bundle') throw new Error('production must build app-bundle');
+          if (e.build.preview.environment !== 'preview') throw new Error('preview must use EAS environment \"preview\"');
+          if (e.build.production.environment !== 'production') throw new Error('production must use EAS environment \"production\"');
           console.log('eas.json profiles OK');
         "

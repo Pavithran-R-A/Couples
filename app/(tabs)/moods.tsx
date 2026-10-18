@@ -294,8 +294,18 @@ export default function MoodsTab() {
 
           <Modal visible={modalVisible} animationType="slide" transparent>
             <View style={[styles.modalBackdrop, { backgroundColor: theme.scrim }]}>
+              <Pressable style={styles.backdropDismiss} onPress={() => setModalVisible(false)} accessibilityLabel="Close" />
               <View style={[styles.modalSheet, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.modalTitle, { color: theme.ink }]}>Keep a moment</Text>
+                <View style={[styles.sheetGrip, { backgroundColor: theme.line }]} />
+                <View style={styles.modalHeadRow}>
+                  <KeepsakeStamp size={34} glyph="flower" tone={theme.coral} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalTitle, { color: theme.ink }]}>Keep a moment</Text>
+                    <Text style={[styles.modalSub, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 15 }]}>
+                      Pressed into your shared scrapbook.
+                    </Text>
+                  </View>
+                </View>
                 <TextInput
                   value={memTitle}
                   onChangeText={setMemTitle}
@@ -327,7 +337,7 @@ export default function MoodsTab() {
                 />
                 <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg }}>
                   <View style={{ flex: 1 }}>
-                    <Button label="Save" onPress={addMemory} loading={memBusy} disabled={!memTitle.trim()} theme={theme} />
+                    <Button label="Press into the book" onPress={addMemory} loading={memBusy} disabled={!memTitle.trim()} theme={theme} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Button label="Cancel" variant="quiet" onPress={() => setModalVisible(false)} theme={theme} />
@@ -400,6 +410,16 @@ const styles = StyleSheet.create({
   scrapbookEmptyTitle: { fontFamily: FONT_HEAD, fontSize: 18 },
   scrapbookEmptyText: { textAlign: 'center', lineHeight: 24, paddingHorizontal: spacing.sm },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end' },
+  backdropDismiss: { flex: 1 },
+  sheetGrip: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4.5,
+    borderRadius: 3,
+    marginBottom: spacing.md,
+  },
+  modalHeadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  modalSub: { lineHeight: 20 },
   modalSheet: {
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,

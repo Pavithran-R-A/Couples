@@ -21,6 +21,7 @@ import {
   FONT_EDITORIAL,
 } from '@/theme/fonts';
 import { CelestialGarden, EnvelopeArt, Constellation, KeepsakeStamp, FlowerSprig } from '@/components/Illustrations';
+import { WaxSeal, EngravedDivider } from '@/components/Ornaments';
 import { EntrySequence } from '@/components/EntrySequence';
 
 const INTRO_LINES = [
@@ -225,6 +226,11 @@ export default function Onboarding() {
             </>
           ) : (
             <>
+              <View style={styles.formSealRow}>
+                <WaxSeal size={40} color={theme.coral} />
+                <EngravedDivider width={140} color={theme.gold} />
+                <WaxSeal size={40} color={theme.gold} />
+              </View>
               <Text style={[styles.formTitle, { color: theme.ink }]}>
                 {tab === 'signup' ? 'Begin together' : tab === 'reset' ? 'Reset your password' : 'Welcome back'}
               </Text>
@@ -367,4 +373,11 @@ const styles = StyleSheet.create({
   },
   formTitle: { fontFamily: FONT_HEAD, fontSize: 30, lineHeight: 38, marginTop: spacing.md },
   formSub: { marginTop: 4 },
+  formSealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
 });

@@ -24,10 +24,11 @@ import { EngravedDivider, WaxSeal } from '@/components/Ornaments';
 import { EnvelopeArt, FlowerSprig, KeepsakeStamp, Constellation } from '@/components/Illustrations';
 import { PerspectiveSwitcher } from '@/components/PerspectiveSwitcher';
 import { ReactionRow } from '@/components/ReactionRow';
+import { AdventureStage } from '@/components/AdventureStage';
 import type { LetterResponse, Reaction, WeeklyAdventure } from '@/domain/types';
 
 export default function LettersTab() {
-  const { backend, mode } = useApp();
+  const { backend, mode, session, reducedMotion } = useApp();
   const theme = useTheme();
   const router = useRouter();
   const isDemo = mode === 'demo';
@@ -44,12 +45,22 @@ export default function LettersTab() {
   const [adventure, setAdventure] = useState<WeeklyAdventure | null>(null);
   const [adventureEntry, setAdventureEntry] = useState('');
   const [adventureBusy, setAdventureBusy] = useState(false);
+  // Which side of the couple the current perspective sits on ('a' = partner A).
+  const [mySide, setMySide] = useState<'a' | 'b' | null>(null);
 
   const load = useCallback(
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
       setError('');
       try {
+        // Resolve the viewer's side from the authorized couple record, so the
+        // same screen renders correctly for either partner (both modes).
+        let side: 'a' | 'b' | null = null;
+        if (session) {
+          const couple = await backend.getCouple();
+          if (couple) side = couple.partnerAId === session.id ? 'a' : 'b';
+        }
+        setMySide(side);
         const today = await backend.getTodayLetter();
         setLetter(today);
         if (today) {
@@ -68,7 +79,7 @@ export default function LettersTab() {
         try {
           const adv = await backend.getWeeklyAdventure();
           setAdventure(adv);
-          if (adv) setAdventureEntry(adv.partnerAEntry ?? '');
+          if (adv) setAdventureEntry((side === 'b' ? adv.partnerBEntry : adv.partnerAEntry) ?? '');
         } catch {
           setAdventure(null);
         }
@@ -79,7 +90,7 @@ export default function LettersTab() {
         setRefreshing(false);
       }
     },
-    [backend]
+    [backend, session]
   );
 
   useEffect(() => {
@@ -110,11 +121,11 @@ export default function LettersTab() {
     }
   };
 
-  const saveAdventure = async () => {
+  const saveAdventure = async (entryText: string) => {
     if (!adventure) return;
     setAdventureBusy(true);
     try {
-      const next = await backend.completeAdventure(adventure.id, adventureEntry);
+      const next = await backend.completeAdventure(adventure.id, entryText);
       setAdventure(next);
     } catch {
       setError('Could not save your part of the adventure');
@@ -226,7 +237,7 @@ export default function LettersTab() {
                 Revealed
               </SectionLabel>
               <Text style={[styles.partnerName, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 17 }]}>
-                {mode === 'demo' ? 'Theo' : 'Your partner'} wrote
+                {mode === 'demo' ? (mySide === 'a' ? 'Theo' : 'Mara') : 'Your partner'} wrote
               </Text>
               <Text style={[styles.partnerAnswer, { color: theme.ink }]}>{partnerResponse.body}</Text>
               <EngravedDivider width={220} />
@@ -275,34 +286,27 @@ export default function LettersTab() {
               <Text style={[styles.adventureTitle, { color: theme.ink }]}>{adventure.title}</Text>
               <Text style={[styles.adventureDetail, { color: theme.inkSoft }]}>{adventure.detail}</Text>
               {(() => {
-                const mine = adventure.partnerADone;
-                const partnerDone = adventure.partnerBDone;
-                const mineEntry = adventure.partnerAEntry;
-                const partnerEntry = adventure.partnerBEntry;
+                const mine = mySide === 'b' ? adventure.partnerBDone : adventure.partnerADone;
+                const partnerDone = mySide === 'b' ? adventure.partnerADone : adventure.partnerBDone;
+                const mineEntry = mySide === 'b' ? adventure.partnerBEntry : adventure.partnerAEntry;
+                const partnerEntry = mySide === 'b' ? adventure.partnerAEntry : adventure.partnerBEntry;
                 return (
-                  <>
-                    {mine ? (
-                      <Text style={[styles.adventureMine, { color: theme.ink }]}>{mineEntry}</Text>
-                    ) : (
-                      <>
-                        <TextInput
-                          value={adventureEntry}
-                          onChangeText={setAdventureEntry}
-                          placeholder="Your part of the adventure…"
-                          placeholderTextColor={theme.inkFaint}
-                          multiline
-                          maxLength={500}
-                          style={[styles.adventureInput, { backgroundColor: theme.surface, borderColor: theme.line, color: theme.ink }]}
-                        />
-                        <Button label="Mark it done" onPress={saveAdventure} loading={adventureBusy} disabled={!adventureEntry.trim()} theme={theme} style={{ marginTop: spacing.sm }} />
-                      </>
-                    )}
-                    {partnerDone && partnerEntry ? (
-                      <Text style={[styles.adventurePartner, { color: theme.inkSoft }]} numberOfLines={2}>
-                        {mode === 'demo' ? 'Theo' : 'Your partner'}: {partnerEntry}
-                      </Text>
-                    ) : null}
-                  </>
+                  <AdventureStage
+                    kind={adventure.kind}
+                    mineDone={mine}
+                    mineEntry={mineEntry}
+                    partnerDone={partnerDone}
+                    partnerEntry={partnerEntry}
+                    partnerName={mode === 'demo' ? (mySide === 'a' ? 'Theo' : 'Mara') : 'Your partner'}
+                    myLabel={mode === 'demo' ? (mySide === 'a' ? 'Mara' : 'Theo') : 'You'}
+                    entry={adventureEntry}
+                    onEntryChange={setAdventureEntry}
+                    onSubmit={() => saveAdventure(adventureEntry)}
+                    busy={adventureBusy}
+                    canSubmit={adventureEntry.trim().length > 0}
+                    theme={theme}
+                    reducedMotion={reducedMotion}
+                  />
                 );
               })()}
             </View>
@@ -433,17 +437,4 @@ const styles = StyleSheet.create({
   adventureHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   adventureTitle: { fontFamily: FONT_HEAD, fontSize: 20, lineHeight: 27 },
   adventureDetail: { fontFamily: FONT_BODY, fontSize: 14, lineHeight: 21 },
-  adventureMine: { fontFamily: FONT_BODY, fontSize: 15, lineHeight: 23 },
-  adventurePartner: { fontFamily: FONT_BODY, fontSize: 13.5, fontStyle: 'italic' },
-  adventureInput: {
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    minHeight: 76,
-    padding: spacing.md,
-    fontSize: 15,
-    fontFamily: FONT_MEDIUM,
-    textAlignVertical: 'top',
-    lineHeight: 22,
-    alignSelf: 'stretch',
-  },
 });

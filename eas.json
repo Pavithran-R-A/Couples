@@ -8,20 +8,14 @@
       "android": {
         "buildType": "apk"
       },
-      "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
-        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
-      }
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
-      "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
-        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
-      }
+      "environment": "production"
     }
   },
   "submit": {

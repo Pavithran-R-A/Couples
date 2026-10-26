@@ -40,3 +40,9 @@ pnpm-workspace.yaml
 
 # Security scanner artifacts
 .mimosa/
+
+# CNG: native projects are generated via `npx expo prebuild` — app.json and
+# config plugins are the source of truth. EAS uploads follow .gitignore when
+# no .easignore exists, so EAS regenerates native config at build time.
+/android
+/ios

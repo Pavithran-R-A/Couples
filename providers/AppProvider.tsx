@@ -13,11 +13,14 @@ interface AppState {
   backend: BackendAdapter;
   mode: BackendMode;
   demo: DemoRepository;
+  /** The real Supabase adapter, or null when no backend env is configured. */
+  production: BackendAdapter | null;
   authReady: boolean;
   session: { id: string; email: string } | null;
   backendNotice: string | null;
   retryBackend: () => void;
-  refreshSession: () => Promise<void>;
+  refreshSession: (adapter?: BackendAdapter) => Promise<void>;
+  enterDemo: () => Promise<void>;
   theme: Theme;
   themeMode: ThemeMode;
   setThemeMode: (m: ThemeMode) => void;
@@ -32,21 +35,23 @@ const MOTION_KEY = 'projecttwo.reducedMotion';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [configuredMode] = useState<BackendMode>(() => (isSupabaseConfigured() ? 'supabase' : 'demo'));
+  // The user's explicit choice to enter the fictional demo overrides the
+  // configured backend until they sign out or reset.
+  const [demoActive, setDemoActive] = useState(false);
   const demo = useMemo(() => new DemoRepository(), []);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [backendProbeKey, setBackendProbeKey] = useState(0);
   const retryBackend = useCallback(() => setBackendProbeKey((k) => k + 1), []);
-  const mode: BackendMode = configuredMode;
-  const backend: BackendAdapter = useMemo(() => {
-    if (mode === 'supabase') {
-      try {
-        return new SupabaseRepository(createSupabaseClient());
-      } catch {
-        return demo;
-      }
+  const mode: BackendMode = demoActive ? 'demo' : configuredMode;
+  const production: BackendAdapter | null = useMemo(() => {
+    if (configuredMode !== 'supabase') return null;
+    try {
+      return new SupabaseRepository(createSupabaseClient());
+    } catch {
+      return null;
     }
-    return demo;
-  }, [mode, demo]);
+  }, [configuredMode]);
+  const backend: BackendAdapter = demoActive ? demo : production ?? demo;
 
   // A real user must never be silently switched into the fictional demo.
   // If the production backend cannot be reached, we surface a blocking
@@ -103,16 +108,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [session, setSession] = useState<{ id: string; email: string } | null>(null);
 
-  const refreshSession = useCallback(async () => {
-    try {
-      const s = await backend.getSession();
-      setSession(s);
-    } catch {
-      setSession(null);
-    } finally {
-      setAuthReady(true);
-    }
-  }, [backend]);
+  const refreshSession = useCallback(
+    async (adapter?: BackendAdapter) => {
+      try {
+        const s = await (adapter ?? backend).getSession();
+        setSession(s);
+      } catch {
+        setSession(null);
+      } finally {
+        setAuthReady(true);
+      }
+    },
+    [backend]
+  );
+
+  const enterDemo = useCallback(async () => {
+    setDemoActive(true);
+    await demo.seedDemoCouple();
+    await demo.signInAsPartner('a');
+    // Read the demo adapter explicitly: the refreshed `backend` value is not
+    // visible in this closure yet.
+    await refreshSession(demo);
+  }, [demo, refreshSession]);
 
   useEffect(() => {
     refreshSession();
@@ -122,10 +139,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      backend, mode, demo, authReady, session, backendNotice: backendError, retryBackend, refreshSession,
+      backend, mode, demo, production, authReady, session, backendNotice: backendError, retryBackend, refreshSession, enterDemo,
       theme, themeMode, setThemeMode, reducedMotion, setReducedMotion,
     }),
-    [backend, mode, demo, authReady, session, backendError, retryBackend, refreshSession,
+    [backend, mode, demo, production, authReady, session, backendError, retryBackend, refreshSession, enterDemo,
      theme, themeMode, setThemeMode, reducedMotion, setReducedMotion]
   );
 

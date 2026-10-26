@@ -6,7 +6,7 @@ import { FONT_BOLD, FONT_BODY } from '../theme/fonts';
 const REACTIONS: { kind: string; glyph: string; label: string }[] = [
   { kind: 'heart', glyph: '♥', label: 'Love' },
   { kind: 'smile', glyph: '☺', label: 'Warm' },
-  { kind: 'spark', glyph: '✶', label: 'Spark' },
+  { kind: 'sparkle', glyph: '✶', label: 'Spark' },
 ];
 
 export function ReactionRow({
@@ -14,7 +14,7 @@ export function ReactionRow({
   activeKind,
   theme,
 }: {
-  onReact: (kind: 'heart' | 'smile' | 'spark') => void;
+  onReact: (kind: 'heart' | 'smile' | 'sparkle') => void;
   activeKind?: string | null;
   theme: Theme;
 }) {
@@ -25,7 +25,7 @@ export function ReactionRow({
         return (
           <Pressable
             key={r.kind}
-            onPress={() => onReact(r.kind as 'heart' | 'smile' | 'spark')}
+            onPress={() => onReact(r.kind as 'heart' | 'smile' | 'sparkle')}
             style={({ pressed }) => [
               styles.chip,
               {

@@ -31,7 +31,10 @@ const INTRO_LINES = [
 ];
 
 export default function Onboarding() {
-  const { backend, mode, demo, refreshSession, backendNotice, retryBackend, reducedMotion } = useApp();
+  const { backend, mode, production, refreshSession, enterDemo, backendNotice, retryBackend, reducedMotion } = useApp();
+  // Real credentials must always hit the production adapter, even while a
+  // demo session is active.
+  const authBackend = production ?? backend;
   const theme = useTheme();
   const router = useRouter();
   const [tab, setTab] = useState<'welcome' | 'signin' | 'signup' | 'reset'>('welcome');
@@ -54,7 +57,7 @@ export default function Onboarding() {
   }, [introStep, tab, reducedMotion]);
 
   const finish = async () => {
-    await refreshSession();
+    await refreshSession(authBackend);
     router.replace('/pairing');
   };
 
@@ -62,9 +65,7 @@ export default function Onboarding() {
     setBusy(true);
     setError('');
     try {
-      await demo.seedDemoCouple();
-      await demo.signInAsPartner('a');
-      await refreshSession();
+      await enterDemo();
       router.replace('/(tabs)');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the demo');
@@ -80,11 +81,11 @@ export default function Onboarding() {
         if (!email.includes('@')) throw new Error('Please enter a valid email address');
         if (password.length < 8) throw new Error('Password needs at least 8 characters');
         if (!displayName.trim()) throw new Error('Please add the name your partner will see');
-        await backend.signUp(email.trim(), password, displayName.trim());
+        await authBackend.signUp(email.trim(), password, displayName.trim());
         // With email confirmation on, signUp() leaves no session and the
         // profile is created server-side by trigger. Route by what the
         // adapter session actually shows.
-        const s = await backend.getSession();
+        const s = await authBackend.getSession();
         if (s) {
           await finish();
         } else {
@@ -92,10 +93,11 @@ export default function Onboarding() {
           setTab('signin');
         }
       } else if (tab === 'reset') {
-        await backend.requestPasswordReset(email.trim());
+        await authBackend.requestPasswordReset(email.trim());
         setError('If that email is registered, a reset link is on its way.');
       } else {
-        await backend.signIn(email.trim(), password);
+        await authBackend.signIn(email.trim(), password);
+        await refreshSession(authBackend);
         router.replace('/(tabs)');
       }
     } catch (e) {

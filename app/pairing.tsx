@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Platform, Share } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useApp } from '@/providers/AppProvider';
 import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
@@ -55,10 +55,23 @@ export default function Pairing() {
     );
   };
 
-  const copyCode = () => {
+  const copyCode = async () => {
     if (!invitation) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    try {
+      if (Platform.OS === 'web') {
+        const clipboard = (
+          globalThis as { navigator?: { clipboard?: { writeText: (t: string) => Promise<void> } } }
+        ).navigator?.clipboard;
+        if (!clipboard) throw new Error('clipboard unavailable');
+        await clipboard.writeText(invitation.code);
+      } else {
+        await Share.share({ message: `Join me on Project Two — your invitation code: ${invitation.code}` });
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // The code stays on screen so it can be read out or typed by hand.
+    }
   };
 
   return (
@@ -86,7 +99,7 @@ export default function Pairing() {
                 <>
                   <Text style={[styles.codeLabel, { color: th.inkSoft }]}>Share this code with your partner</Text>
                   <Text style={[styles.code, { color: th.accent }]}>{invitation.code}</Text>
-                  <Button label={copied ? 'Copied to your heart' : 'I shared it'} variant="quiet" onPress={copyCode} theme={th} />
+                  <Button label={copied ? 'Copied to your heart' : 'Copy the code'} variant="quiet" onPress={copyCode} theme={th} />
                   <Text style={[styles.expires, { color: th.inkFaint }]}>Valid for 7 days, single use only.</Text>
                 </>
               ) : (

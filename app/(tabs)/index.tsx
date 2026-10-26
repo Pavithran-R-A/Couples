@@ -111,7 +111,7 @@ export default function LettersTab() {
     }
   };
 
-  const react = async (kind: 'heart' | 'smile' | 'spark') => {
+  const react = async (kind: 'heart' | 'smile' | 'sparkle') => {
     if (!letter || !partnerResponse) return;
     try {
       await backend.reactToResponse(partnerResponse.id, kind);
@@ -301,7 +301,7 @@ export default function LettersTab() {
                     myLabel={mode === 'demo' ? (mySide === 'a' ? 'Mara' : 'Theo') : 'You'}
                     entry={adventureEntry}
                     onEntryChange={setAdventureEntry}
-                    onSubmit={() => saveAdventure(adventureEntry)}
+                    onSubmit={(entry) => saveAdventure(entry ?? adventureEntry)}
                     busy={adventureBusy}
                     canSubmit={adventureEntry.trim().length > 0}
                     theme={theme}

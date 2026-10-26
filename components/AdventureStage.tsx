@@ -26,7 +26,7 @@ export interface AdventureStageProps {
   myLabel: string;
   entry: string;
   onEntryChange: (t: string) => void;
-  onSubmit: () => void;
+  onSubmit: (entry?: string) => void;
   busy: boolean;
   canSubmit: boolean;
   theme: Theme;
@@ -43,7 +43,7 @@ function EntryBox({
   onEntryChange: (t: string) => void;
   busy: boolean;
   canSubmit: boolean;
-  onSubmit: () => void;
+  onSubmit: (entry?: string) => void;
   placeholder: string;
   minHeight?: number;
 }) {
@@ -62,7 +62,7 @@ function EntryBox({
         <Pressable
           accessibilityRole="button"
           disabled={!canSubmit || busy}
-          onPress={onSubmit}
+          onPress={() => onSubmit()}
           style={({ pressed }) => [
             styles.submitBtn,
             { backgroundColor: canSubmit && !busy ? theme.gold : theme.goldSoft, opacity: busy ? 0.6 : pressed ? 0.85 : 1 },
@@ -272,9 +272,11 @@ function DoodleStage(p: AdventureStageProps) {
     return `[doodle v1; ${strokes.length} strokes] ${parts.join(' ')}`;
   };
 
+  // The parent's entry state has not re-rendered yet at submit time, so the
+  // serialized doodle must travel with the submit call, not through
+  // onEntryChange state.
   const submitDoodle = () => {
-    p.onEntryChange(serializeDoodle());
-    p.onSubmit();
+    p.onSubmit(serializeDoodle());
   };
 
   return (

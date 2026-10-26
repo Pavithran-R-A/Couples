@@ -61,12 +61,26 @@ cross-couple completion denied, anon reads permission-denied.
   to authenticated only; the privileged stamping function grants none.
 - Dependency audit (`npm audit --package-lock-only`): non-breaking fixes
   applied to the lockfile (17 → 8 findings; critical `shell-quote` and
-  high `ws`/`@xmldom/xmldom`/`picomatch` resolved). The remaining 8
-  (3 moderate, 5 high) sit in the Expo SDK 57 toolchain (e.g. `@expo/cli`,
-  `node-forge` via code-signing, `zod` in CLI validation) and have no
-  runtime attack surface in the shipped app; npm's suggested "fix" is a
-  major Expo downgrade (57 → 44), which is not viable. Recorded as
-  accepted toolchain risk, to be revisited at the next SDK upgrade.
+  high `ws`/`@xmldom/xmldom`/`picomatch` resolved). Each remaining advisory
+  was read individually (commit `286f30a`):
+  - **Development/build-time only, no shipped-app surface (5):** `node-forge`
+    (RSA PKCS#1 v1.5 verification flaw) and `zod` (memory exhaustion) reach
+    the project only through `@expo/code-signing-certificates` → `@expo/cli`
+    — Expo CLI build tooling; the app binary does not bundle them, and the
+    build does not verify attacker-supplied signed artifacts.
+    `@expo/cli` and the `expo` aggregate finding are the same path.
+  - **Runtime-reachable, client-side DoS only (3):** `decode-uri-component`
+    → `query-string` → `expo-router` (exponential decoding of malformed
+    percent-encoded input). Reachable via deep-link URL parsing; worst case
+    is a hang of the app instance when a user opens a maliciously crafted
+    link. No confidentiality or integrity impact, no code execution, no
+    data exposure.
+  - **Remediation path:** npm's suggested "fixes" are major-version moves
+    (Expo SDK 57 → 54 downgrade / router → 58 upgrade); no patch releases
+    exist within SDK 57. The correct remediation is the planned SDK 58
+    upgrade, not a hotfix downgrade. Accepted for the internal-distribution
+    release candidate with the SDK-58 upgrade tracked as the fix; the three
+    runtime findings are DoS-class only and do not gate this milestone.
 
 ## Known limitations (not vulnerabilities, stated to keep privacy claims honest)
 

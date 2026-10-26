@@ -46,3 +46,6 @@ pnpm-workspace.yaml
 # no .easignore exists, so EAS regenerates native config at build time.
 /android
 /ios
+
+# Local QA evidence (screenshots, PR comment drafts) — workspace-only
+/.qa

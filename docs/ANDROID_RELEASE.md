@@ -22,10 +22,10 @@ npx expo prebuild -p android   # regenerates android/ from app.json
   midnight-navy `#151D32` background (matches the Moonlit Garden theme).
 - **Splash**: icon at 180pt width on `#151D32`, with an explicit dark variant
   on `#0E1526` so the launch screen never flashes white in dark mode.
-- **Deep links**: `projecttwo://` custom scheme plus `https://projecttwo.app`
-  App Links intent filter (`autoVerify: true`) — see the ownership caveat in
-  `docs/EXTERNAL_BLOCKERS.md`; the custom scheme is the verified path used
-  by password recovery (`projecttwo://reset-password`).
+- **Deep links**: `projecttwo://` custom scheme — the verified path used by
+  password recovery (`projecttwo://reset-password`). The previously declared
+  `https://projecttwo.app` App Links filter was **removed** after the domain
+  proved not to exist (NXDOMAIN; see `docs/EXTERNAL_BLOCKERS.md`).
 - **Permissions**: only `POST_NOTIFICATIONS`. No location, camera, contacts,
   or storage permissions are requested — the app is deliberately minimal.
 - **EAS profiles** (`eas.json`): `preview` builds an APK (`environment:

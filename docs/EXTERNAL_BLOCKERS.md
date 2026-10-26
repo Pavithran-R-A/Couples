@@ -44,17 +44,18 @@ defect unless explicitly stated.
   (Couples) EAS project; `app.json` then gets the real project ID; a preview
   APK can be built on EAS cloud runners without touching local disk.
 
-## 4. Hosted App Links domain ownership
+## 4. ~~Hosted App Links domain ownership~~ — RESOLVED by removal (2026-10-27)
 
-- **Observed:** `app.json` declares an `https://projecttwo.app` App Links
-  intent filter with autoVerify. Domain ownership (`/.well-known/
-  assetlinks.json` with the real signing fingerprint) cannot be proven from
-  this environment.
-- **Position:** the custom scheme `projecttwo://` is the primary deep-link
-  path (password recovery uses it); the HTTPS App Link must be treated as
-  unverified until the domain association is proven. If it cannot be proven
-  before release, the autoVerify declaration should be removed rather than
-  shipped misleadingly.
+- **Verified:** `projecttwo.app` **does not exist** (DNS NXDOMAIN; both
+  `https://projecttwo.app` and `/.well-known/assetlinks.json` fail to
+  resolve). The domain is not registered or operated by the owner.
+- **Action taken:** the `autoVerify` HTTPS App Links declaration
+  (`https://projecttwo.app` intent filter) was **removed** from `app.json`
+  rather than shipped misleadingly. The custom scheme **`projecttwo://`** is
+  preserved and is the password-recovery deep-link path
+  (`projecttwo://reset-password`). If the owner later registers and controls
+  the domain, the App Links filter can be reinstated together with a
+  `/.well-known/assetlinks.json` carrying the real signing fingerprint.
 
 ## 5. Local disk headroom
 

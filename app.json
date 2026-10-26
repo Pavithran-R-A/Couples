@@ -17,18 +17,7 @@
         "monochromeImage": "./assets/images/icon.png",
         "backgroundColor": "#151D32"
       },
-      "permissions": ["POST_NOTIFICATIONS"],
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            { "scheme": "projecttwo" },
-            { "scheme": "https", "host": "projecttwo.app" }
-          ],
-          "category": ["BROWSABLE", "DEFAULT"]
-        }
-      ]
+      "permissions": ["POST_NOTIFICATIONS"]
     },
     "web": {
       "bundler": "metro",

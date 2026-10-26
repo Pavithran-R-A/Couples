@@ -1,7 +1,20 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-26 (completion session). Each item lists real verification
-performed in this session, or states plainly that verification was not possible.
+Last updated: 2026-10-26 (release-hardening session). Each item lists real
+verification performed in this session, or states plainly that verification
+was not possible.
+
+## Implemented and tested (Release-hardening session, 2026-10-26)
+
+| Work | Evidence |
+| --- | --- |
+| Phase-One hardening of migration 0011 | `stamp_response_reveal()` moved into the private schema (not Data-API exposed), `search_path = ''` with fully qualified `pg_catalog`/`public`/`private` references; EXECUTE revoked from public/anon/authenticated; trigger re-pointed. New suite check asserts schema location, `has_function_privilege` revocation, restricted search_path in `proconfig`, and the trigger being enabled. **55/55 checks, 11/11 migrations, exit 0.** Commit `1ada7b6`. |
+| Recovery-link parser regression suite | Parser extracted to `services/recoveryLink.ts` (pure, no URLSearchParams dependency, never throws, never logs link contents). 11 checks: fragment tokens (implicit flow), query tokens, expired-link error params with `+` decoding, default copy, malformed percent-encoding, foreign-URL rejection, incomplete sets keep waiting, empty inputs, consumed links still parse for server-side rejection. Reset screen gained a 6s no-payload fallback so the "unsealing" state can never hang indefinitely (a present link owns the flow). Registered as `test:recovery` and in CI. **11/11 pass.** Commit `8f4fc60`. |
+| UI hardening | Safe-area insets on every screen + tab bar (replacing hardcoded 68/84pt); shared Button exposes accessibilityRole/Label/State; reduced motion follows the OS preference live unless the user overrides in Settings; dead history-row pressable removed; unreachable "A surprise waits" card removed; memory Edit fully wired (prefilled sheet → `updateMemory`) with YYYY-MM-DD validation. `tsc` 0 · `lint --max-warnings 0` clean · 4 suites PASS · 55/55. Commit `070bf1a`. |
+| Dependency security | `npm audit fix --package-lock-only`: 17 → 8 findings; critical `shell-quote` and high `ws`/`@xmldom/xmldom`/`picomatch` resolved. Remaining 8 are Expo SDK 57 toolchain advisories with no shipped-app runtime surface (npm's suggested fix is a major SDK downgrade) — recorded as accepted risk. Commit `64d7858`. |
+| Native prebuild committed | `android/` generated via `expo prebuild --platform android` (package `com.projecttwo.app`, adaptive icons, splash, scheme) and committed; build outputs and `local.properties` ignored. Commit `64d7858`. |
+| Android runtime QA on emulator | Full walkthrough with Expo Go 57.0.9 + Metro: splash → entry sequence → welcome → Letters tab → **cold-restart session restore** → Mara seals → Theo cannot see it → Theo seals → **reveal shows Mara's exact original text** → reaction row. Accessibility tree confirms Button/EditText/tab roles. No fatal logcat errors. Local `gradlew assembleDebug` aborted at 103 MB free disk (documented). Details + fidelity label: `docs/ANDROID_DEVICE_QA.md`. Screenshots in workspace `.qa/` (13 PNGs, referenced by name). |
+| Release evidence docs | `docs/FINAL_RELEASE_READINESS.md` (gate matrix with PASS/FAIL/BLOCKED/NOT TESTED + weighted estimate), `docs/SECURITY_ACCEPTANCE.md`, `docs/EXTERNAL_BLOCKERS.md`, `docs/ANDROID_DEVICE_QA.md`. Commit `64d7858` + this one. |
 
 ## Implemented and tested (Hardening session, 2026-10-26 — answer finality + auth)
 

@@ -1,7 +1,20 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-17 (Gate 1 complete). Each item lists real verification
+Last updated: 2026-10-26 (completion session). Each item lists real verification
 performed in this session, or states plainly that verification was not possible.
+
+## Implemented and tested (Completion session, 2026-10-26)
+
+| Work | Evidence |
+| --- | --- |
+| GitHub Actions zero-jobs failure root-caused and fixed | All 9 runs since the workflow existed failed in ~0s with zero jobs. Cause: the `Validate eas.json build profiles` step used a multi-line YAML plain scalar (`run: node -e "`) whose closing quote line was indented 8 spaces against 10-space continuation lines — a hard parse error (`deficient indentation`), so GitHub never created a job. Fixed in commit `b9d3d2f` by wrapping the script in a literal block scalar; validated with js-yaml (file parses: jobs verify/migration/config-checks, triggers push+pull_request). Empirically confirmed on PR #1: all three jobs are now created. |
+| Second CI blocker identified (external): account billing | With jobs now created, each fails in 1–4s with zero steps executed and the annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings." The same instant-failure signature appears on other private repos of this account. Resolves only via GitHub Settings → Billing & plans; not fixable from the repository. |
+| Production reactions fixed | The UI sent reaction kind `'spark'` but the hosted check constraint only allows ('heart','sparkle','smile','tear','hug') — every production reaction insert was rejected (the demo masked it). Renamed to `'sparkle'` in `domain/types.ts`, `components/ReactionRow.tsx`, `app/(tabs)/index.tsx`. Commit `2a1cb7c`. |
+| Weekly-adventure doodles persist their drawing summary | `submitDoodle` pushed the serialized drawing through parent state and submitted synchronously, so the parent closure sent the stale (usually empty) entry to `complete_adventure_part`. `onSubmit` now carries the finalized entry (`(entry?: string) => void`); the parent uses `entry ?? adventureEntry`; the shared submit button invokes `onSubmit()` without leaking the press event. Commit `2a1cb7c`. |
+| Invitation-code copy made real | The pairing button only flipped a local `copied` flag. It now copies via the Clipboard API on web and opens the share sheet on native (no new dependencies). Commit `2a1cb7c`. |
+| Demo mode reachable in production-configured builds | `AppProvider` pinned the adapter to Supabase whenever env vars existed, so "Enter the demo" signed into the DemoRepository while `refreshSession()` read Supabase — RootGate bounced back to onboarding and the demo was unreachable. The provider now tracks an explicit `demoActive` override (`enterDemo()`), exposes `production` separately from the active `backend`, and `refreshSession(adapter?)` can target an adapter explicitly. Commit `2a1cb7c`. |
+| Sign-in form establishes a provider session | `submitAuth` navigated to tabs after `signIn` without refreshing the provider session, leaving every screen with a null session. Fixed, and all real-auth calls now go through `production ?? backend` so a demo-active user signing in still hits Supabase. Commit `2a1cb7c`. |
+| Full local verification at pushed SHA `f5d6730` | `tsc --noEmit` → 0 errors (exit 0) · `expo lint --max-warnings 0` → clean (exit 0) · reveal_privacy_demo / preview_smoke / demo_tour → PASS · `node scripts/migrate-and-test.mjs` → ALL 10/10 migrations applied, HARDENING RESULTS 35/35 passed (exit 0) · `expo install --check` → dependencies up to date (exit 0) · `expo export --platform web` → exit 0 · CI secret checks (no committed .env, no `eyJ` key material, no hardcoded Supabase keys) → OK · eas.json profile validation → OK. |
 
 ## Implemented and tested (Gate 2)
 
@@ -53,17 +66,14 @@ performed in this session, or states plainly that verification was not possible.
 
 ## Blocked by missing external access
 
-- GitHub Actions run verdict: we cannot trigger or observe runs in
-  `pavithran299/Couples` from this environment. Every workflow step is now
-  verified locally (typecheck 0, lint --max-warnings 0 clean, three tsx
-  suites pass, migration suite 35/35, web export builds, eas.json check
-  passes), but the green verdict must come from a real run at the pushed SHA.
-  Seven earlier runs recorded zero job records — the most likely causes are
-  Actions disabled for the repo / no runner minutes (private repo billing),
-  or a startup failure before jobs were created. Check the repo's
-  Settings → Actions → General ("Allow all actions") and the Actions billing
-  section; then push and read the run at the new SHA. If a run still shows
-  zero jobs, capture the run's `check_suite` state from the API for diagnosis.
+- GitHub Actions green verdict: two independent blockers found. (1) The
+  workflow YAML defect — FIXED (see the completion session above; jobs are
+  now created). (2) Account Actions billing: jobs fail before any step runs
+  with "recent account payments have failed or your spending limit needs to
+  be increased" — resolves only in GitHub Settings → Billing & plans. Every
+  verification the run would perform already passes locally at the pushed
+  SHA `f5d6730` (see the completion session above). Once billing is fixed,
+  re-run PR #1's checks (e.g. `gh run rerun 40353624925`) or push.
 - Android APK/AAB: requires `eas login` on a signed-in machine — **blocked
   here** (no EAS credentials in this environment; no build was produced).
   Every configuration file is ready; `docs/ANDROID_RELEASE.md` holds the

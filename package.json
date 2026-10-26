@@ -14,7 +14,8 @@
     "test:privacy": "tsx backend_src/tests/reveal_privacy_demo.test.ts",
     "test:smoke": "tsx backend_src/tests/preview_smoke.test.ts",
     "test:tour": "tsx backend_src/tests/demo_tour.test.ts",
-    "test:recovery": "tsx backend_src/tests/recovery_link.test.ts"
+    "test:recovery": "tsx backend_src/tests/recovery_link.test.ts",
+    "test:demoflag": "tsx backend_src/tests/demo_flag.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/cormorant-garamond": "^0.4.1",

@@ -33,3 +33,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Local pnpm artifacts — this repo is npm-based (package-lock.json, CI npm ci)
+pnpm-lock.yaml
+pnpm-workspace.yaml

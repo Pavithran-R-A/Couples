@@ -19,8 +19,8 @@ evidence yet. Blocked items are tracked in `EXTERNAL_BLOCKERS.md`.
 | J. Mobile accessibility & device UI | **PASS (emulator, this cycle)** | Safe-area insets everywhere, Button a11y roles/state, OS reduce-motion honored; emulator walkthrough recorded in `ANDROID_DEVICE_QA.md`. Physical-device QA NOT TESTED. |
 | K. Deep links & password recovery | **PASS (local parser)** | Parser: 11/11 regression checks (fragment/query/error/malformed forms). Hosted redirect allow-list + real email flow NOT TESTED. |
 | L. GitHub CI | **BLOCKED** | Workflow healthy (3 jobs created — YAML fix proven). Jobs fail before any step on account billing. Local equivalents of every CI step pass. |
-| M. Installable Android APK | **PASS (debug, local)** | `gradlew assembleDebug` artifact built from this branch and installed on the Pixel_10 emulator (see `ANDROID_DEVICE_QA.md`). Signed release APK / AAB via EAS: BLOCKED. |
-| N. On-device acceptance | **PASS (emulator smoke)** | Demo-mode runtime walkthrough on emulator; production-backed two-account device flows NOT TESTED. |
+| M. Installable Android APK | **BLOCKED** | Local `gradlew assembleDebug` from the committed `android/` prebuild aborted at 103 MB free disk (gradle downloads + intermediates over a 7.5 GB AVD image); EAS cloud build blocked on credentials. Runtime QA ran via Expo Go 57 instead (see N). |
+| N. On-device acceptance | **PASS (emulator, Expo Go runtime)** | Full demo two-person lifecycle executed and screenshotted: seal → pre-reveal blindness → reveal with byte-identical originals; cold-restart session restore; a11y tree verified; no fatal logcat errors (`docs/ANDROID_DEVICE_QA.md`). Physical-device and production-APK acceptance NOT TESTED. |
 | O. Release documentation | **PASS** | This file, `SECURITY_ACCEPTANCE.md`, `EXTERNAL_BLOCKERS.md`, `ANDROID_DEVICE_QA.md`, `RELEASE_PROGRESS.md`. |
 
 ## Weighted completion estimate
@@ -32,9 +32,9 @@ each gate's score is 100% only for independently demonstrated evidence.
 - Database/backend correctness (C, F, G): local replay proven; hosted parity and advisors outstanding → weighted ~20%: **~70% earned**.
 - Real authentication & two-person journeys (D, E, K-hosted): ~15%: **~25% earned** (parser + DB contract proven; live journeys not).
 - CI (L): ~10%: **~60% earned** (pipeline healthy; verdict blocked on billing).
-- Android artifact & device QA (M, N, J): ~20%: **~75% earned** (local APK + emulator done; EAS signing, physical devices, store-readiness outstanding).
+- Android artifact & device QA (M, N, J): ~20%: **~55% earned** (emulator runtime QA complete with real two-person flows; packaged APK and physical devices outstanding).
 
-**Overall: ≈ 72% of verified consumer-release readiness.** The remaining
+**Overall: ≈ 70% of verified consumer-release readiness.** The remaining
 28% is dominated by owner-side external dependencies (GitHub billing, a
 Supabase authorized session, EAS credentials); no open code defect is known
 to block them.

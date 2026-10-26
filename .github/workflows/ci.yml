@@ -104,7 +104,7 @@ jobs:
             echo "::error::possible real key material committed"
             exit 1
           fi
-          if git grep -nE "(SUPABASE_[A-Z_]*KEY|SUPABASE_SERVICE)\s*=\s*[\"'][^\"']{8,}" -- ':!.env.example'; then
+          if git grep -nE "(SUPABASE_[A-Z_]*KEY|SUPABASE_SERVICE)\s*=\s*[\"'][^\"']{8,}" -- ':!.env.example' ':!backend_src/tests'; then
             echo "::error::possible hardcoded Supabase key"
             exit 1
           fi

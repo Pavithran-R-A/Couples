@@ -439,12 +439,38 @@ await asUser('mara', async (d) => {
   () => check('spoofed author_id insert rejected by RLS', true),
 );
 
-// The stamping function is trigger-only: EXECUTE revoked from every role.
+// The stamping function is trigger-only: it lives in the non-exposed private
+// schema and EXECUTE is revoked from every role, so even direct SQL fails.
 await asUser('mara', async (d) => {
-  await d.exec('select public.stamp_response_reveal();');
+  await d.exec('select private.stamp_response_reveal();');
 }).then(
   () => check('reveal stamping function is not client-callable', false, 'SHOULD HAVE FAILED'),
   () => check('reveal stamping function is not client-callable', true),
+);
+const fnMeta = (
+  await db.exec(`select
+    (select count(*)::int from information_schema.routines
+      where routine_schema = 'public' and routine_name = 'stamp_response_reveal') as in_public,
+    (select count(*)::int from information_schema.routines
+      where routine_schema = 'private' and routine_name = 'stamp_response_reveal') as in_private,
+    has_function_privilege('authenticated', 'private.stamp_response_reveal()', 'EXECUTE') as auth_can_execute,
+    (select coalesce(array_to_string(proconfig, ','), '') from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'private' and p.proname = 'stamp_response_reveal') as fn_config,
+    (select tgenabled from pg_trigger t
+      join pg_class c on c.oid = t.tgrelid
+      where t.tgname = 'responses_reveal_stamp' and c.relname = 'responses') as trig_state;`)
+)[0].rows[0];
+check(
+  'stamp function: private schema only, EXECUTE revoked, restricted search_path, trigger enabled',
+  fnMeta.in_public === 0 &&
+    fnMeta.in_private === 1 &&
+    fnMeta.auth_can_execute === false &&
+    fnMeta.fn_config.includes('search_path=') &&
+    !fnMeta.fn_config.includes('search_path=public') &&
+    fnMeta.trig_state === 'O',
+  `public=${fnMeta.in_public} private=${fnMeta.in_private} exec=${fnMeta.auth_can_execute} ` +
+    `config="${fnMeta.fn_config}" trigger=${fnMeta.trig_state}`
 );
 
 // Anonymous clients hold no INSERT grant on responses at all.

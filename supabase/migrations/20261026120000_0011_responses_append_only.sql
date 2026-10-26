@@ -18,6 +18,10 @@
 -- using the live both_partners_answered rule from 0003, so existing data
 -- stays exactly as visible as before — the stamp is bookkeeping, not the
 -- privacy gate.
+--
+-- The stamping function lives in the private schema (never exposed through
+-- the Data API), uses a restricted search_path and fully qualified object
+-- references, following current Supabase guidance for privileged functions.
 -- ==========================================================================
 
 -- 1. No client can modify or remove an answer once written. RLS had no
@@ -32,8 +36,14 @@ revoke delete on public.responses from authenticated;
 -- (1) the inserting client holds no UPDATE privilege at all, yet the pair
 -- must be stamped atomically with the second insert; a SECURITY INVOKER
 -- trigger would fail. Guardrails:
+--   * lives in the private schema, which the Data API does not expose, so
+--     the function is not callable, let alone listable, from any client;
 --   * invoked only by the AFTER INSERT trigger — EXECUTE is revoked from
---     public/anon/authenticated, so it cannot be called directly;
+--     public/anon/authenticated (trigger invocation does not require
+--     EXECUTE), so even a direct SQL call is permission-denied;
+--   * restricted search_path plus fully qualified references — a hijacked
+--     or attacker-controlled search path cannot redirect privileged
+--     execution to a hostile object;
 --   * validates that the letter exists and the author is one of its
 --     couple's two partners; it trusts nothing about the caller beyond
 --     what RLS already enforced on the INSERT;
@@ -45,11 +55,11 @@ revoke delete on public.responses from authenticated;
 --   * the trigger runs inside the inserting transaction: insert + stamp
 --     commit together or not at all. No client clock or client-provided
 --     value is involved.
-create or replace function public.stamp_response_reveal()
+create or replace function private.stamp_response_reveal()
 returns trigger
 language plpgsql
 security definer
-set search_path = public, private
+set search_path = ''
 as $$
 declare
   v_couple uuid;
@@ -64,30 +74,32 @@ begin
     raise exception 'responses: author is not a member of the letter couple';
   end if;
 
-  perform pg_advisory_xact_lock(hashtext('response_reveal' || new.letter_id::text));
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('response_reveal' || new.letter_id::text)
+  );
 
   update public.responses r
-     set revealed_at = now()
+     set revealed_at = pg_catalog.now()
    where r.letter_id = new.letter_id
      and r.revealed_at is null
-     and (select count(*) from public.responses c
+     and (select pg_catalog.count(*) from public.responses c
            where c.letter_id = new.letter_id) >= 2;
   return new;
 end;
 $$;
 
-revoke execute on function public.stamp_response_reveal() from public, anon, authenticated;
+revoke execute on function private.stamp_response_reveal() from public, anon, authenticated;
 
 drop trigger if exists responses_reveal_stamp on public.responses;
 create trigger responses_reveal_stamp
   after insert on public.responses
-  for each row execute function public.stamp_response_reveal();
+  for each row execute function private.stamp_response_reveal();
 
 -- 3. Backfill: pairs that completed before this migration get their stamp.
 -- Visibility never depended on the column, so this only aligns stored state;
--- already-stamped rows are untouched (coalesce guards).
+-- already-stamped rows are untouched (coalesce guards). Idempotent on rerun.
 update public.responses r
-   set revealed_at = coalesce(r.revealed_at, now())
+   set revealed_at = coalesce(r.revealed_at, pg_catalog.now())
  where r.revealed_at is null
    and (select count(*) from public.responses c
          where c.letter_id = r.letter_id) >= 2;

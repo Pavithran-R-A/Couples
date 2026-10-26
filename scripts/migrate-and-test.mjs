@@ -279,6 +279,225 @@ await asUser('eve', async (d) => {
 });
 await check('third user without couple cannot get a letter', eveNoLetter);
 
+// 3b. Response append-only finality (migration 0011). A second letter for
+// the same couple lets us test both sides of the reveal boundary without
+// disturbing the section-3 assertions above.
+const letter2Id = (
+  await db.exec(`
+    insert into public.daily_letters (couple_id, letter_date, question_id, question_text, category)
+    values ('${coupleId}', current_date - 1, (select id from public.question_bank limit 1),
+            'What made you laugh this week?', 'playful')
+    returning id;
+  `)
+)[0].rows[0].id;
+
+// A submits a valid final answer; assert the stored body explicitly.
+await asUser('mara', async (d) => {
+  await d.exec(`insert into public.responses (letter_id, author_id, body)
+                values ('${letter2Id}', '${users.mara}', 'Mara final answer v1');`);
+});
+const maraStored = (
+  await db.exec(`select body from public.responses where letter_id = '${letter2Id}' and author_id = '${users.mara}';`)
+)[0].rows;
+check(
+  'partner A submission stores the exact final answer',
+  maraStored.length === 1 && maraStored[0].body === 'Mara final answer v1',
+  `rows=${maraStored.length}`
+);
+
+// B cannot read A's answer before answering (RLS both_partners_answered).
+const theoRowsBefore = await asUser('theo', async (d) => {
+  const r = await d.exec(`select body from public.responses where letter_id = '${letter2Id}';`);
+  return r[0].rows.length;
+});
+check('partner B reads zero responses before answering', theoRowsBefore === 0, `saw ${theoRowsBefore}`);
+
+// A attempts a second submission with different text: unique(letter_id,
+// author_id) must reject it with 23505 and the original must survive.
+await asUser('mara', async (d) => {
+  await d.exec(`insert into public.responses (letter_id, author_id, body)
+                values ('${letter2Id}', '${users.mara}', 'Mara TAMPERED v2');`);
+}).then(
+  () => check('second submission by same author is rejected', false, 'SHOULD HAVE FAILED'),
+  (e) => {
+    const code = e?.code ?? '';
+    check(
+      'second submission by same author is rejected',
+      code === '23505' || String(e?.message ?? '').includes('duplicate key'),
+      `sqlstate=${code || 'n/a'}`
+    );
+  },
+);
+const afterResubmit = (
+  await db.exec(`select body, (select count(*)::int from public.responses where letter_id = '${letter2Id}') as n
+                 from public.responses where letter_id = '${letter2Id}' and author_id = '${users.mara}';`)
+)[0].rows[0];
+check(
+  'original answer unchanged and unduplicated after rejected resubmission',
+  afterResubmit.body === 'Mara final answer v1' && afterResubmit.n === 1,
+  `rows=${afterResubmit.n}`
+);
+
+// UPDATE privilege is revoked entirely (0011): body, revealed_at and DELETE
+// all fail at the privilege level, independent of any policy.
+await asUser('mara', async (d) => {
+  await d.exec(`update public.responses set body = 'rewritten' where letter_id = '${letter2Id}' and author_id = '${users.mara}';`);
+}).then(
+  () => check('direct UPDATE on answer body denied', false, 'SHOULD HAVE FAILED'),
+  () => check('direct UPDATE on answer body denied', true),
+);
+await asUser('mara', async (d) => {
+  await d.exec(`update public.responses set revealed_at = now() where letter_id = '${letter2Id}' and author_id = '${users.mara}';`);
+}).then(
+  () => check('direct revealed_at manipulation denied', false, 'SHOULD HAVE FAILED'),
+  () => check('direct revealed_at manipulation denied', true),
+);
+await asUser('mara', async (d) => {
+  await d.exec(`delete from public.responses where letter_id = '${letter2Id}' and author_id = '${users.mara}';`);
+}).then(
+  () => check('direct DELETE of an answer denied', false, 'SHOULD HAVE FAILED'),
+  () => check('direct DELETE of an answer denied', true),
+);
+
+// Explicit grant-surface assertion, not inferred from error behaviour.
+const privs = (
+  await db.exec(`select
+    has_table_privilege('authenticated', 'public.responses', 'SELECT')  as can_select,
+    has_table_privilege('authenticated', 'public.responses', 'INSERT')  as can_insert,
+    has_table_privilege('authenticated', 'public.responses', 'UPDATE')  as can_update,
+    has_table_privilege('authenticated', 'public.responses', 'DELETE')  as can_delete;`)
+)[0].rows[0];
+check(
+  'responses grant surface is select+insert only for authenticated',
+  privs.can_select === true && privs.can_insert === true &&
+    privs.can_update === false && privs.can_delete === false,
+  `select=${privs.can_select} insert=${privs.can_insert} update=${privs.can_update} delete=${privs.can_delete}`
+);
+
+// B submits; both originals become visible to the couple, stamped by the
+// trigger, and neither partner can edit afterwards.
+await asUser('theo', async (d) => {
+  await d.exec(`insert into public.responses (letter_id, author_id, body)
+                values ('${letter2Id}', '${users.theo}', 'Theo final answer v1');`);
+});
+const pairRows = (
+  await db.exec(`select author_id, body, revealed_at from public.responses
+                 where letter_id = '${letter2Id}' order by author_id;`)
+)[0].rows;
+check(
+  'both originals intact after both submitted (stored truth)',
+  pairRows.length === 2 &&
+    pairRows.some((r) => r.author_id === users.mara && r.body === 'Mara final answer v1') &&
+    pairRows.some((r) => r.author_id === users.theo && r.body === 'Theo final answer v1'),
+  `rows=${pairRows.length}`
+);
+check(
+  'revealed_at stamped server-side on both rows (non-null, identical)',
+  pairRows.every((r) => r.revealed_at !== null) &&
+    String(pairRows[0].revealed_at) === String(pairRows[1].revealed_at),
+  `stamps=${pairRows.map((r) => (r.revealed_at ? 'set' : 'null')).join(',')}`
+);
+await asUser('theo', async (d) => {
+  const r = await d.exec(`select body from public.responses where letter_id = '${letter2Id}' order by body;`);
+  const bodies = r[0].rows.map((x) => x.body);
+  if (!(bodies.includes('Mara final answer v1') && bodies.includes('Theo final answer v1'))) {
+    throw new Error('post-reveal visibility broken');
+  }
+});
+await check('both partners read both originals after reveal (RLS)', true);
+await asUser('theo', async (d) => {
+  await d.exec(`update public.responses set body = 'theo rewrite' where letter_id = '${letter2Id}' and author_id = '${users.theo}';`);
+}).then(
+  () => check('no partner can edit an answer after reveal', false, 'SHOULD HAVE FAILED'),
+  () => check('no partner can edit an answer after reveal', true),
+);
+
+// Third account: cannot view, join, alter or spoof anything on the letter.
+await asUser('eve', async (d) => {
+  const r = await d.exec(`select body from public.responses where letter_id = '${letter2Id}';`);
+  if (r[0].rows.length > 0) throw new Error('cross-couple leak');
+});
+await check('third account reads zero responses', true);
+await asUser('eve', async (d) => {
+  await d.exec(`insert into public.responses (letter_id, author_id, body)
+                values ('${letter2Id}', '${users.eve}', 'eve intrusion');`);
+}).then(
+  () => check('third account cannot join the letter conversation', false, 'SHOULD HAVE FAILED'),
+  () => check('third account cannot join the letter conversation', true),
+);
+await asUser('eve', async (d) => {
+  await d.exec(`update public.responses set body = 'eve was here' where letter_id = '${letter2Id}';`);
+}).then(
+  () => check('third account cannot alter responses', false, 'SHOULD HAVE FAILED'),
+  () => check('third account cannot alter responses', true),
+);
+await asUser('mara', async (d) => {
+  await d.exec(`insert into public.responses (letter_id, author_id, body)
+                values ('${letter2Id}', '${users.theo}', 'mara spoofing theo');`);
+}).then(
+  () => check('spoofed author_id insert rejected by RLS', false, 'SHOULD HAVE FAILED'),
+  () => check('spoofed author_id insert rejected by RLS', true),
+);
+
+// The stamping function is trigger-only: EXECUTE revoked from every role.
+await asUser('mara', async (d) => {
+  await d.exec('select public.stamp_response_reveal();');
+}).then(
+  () => check('reveal stamping function is not client-callable', false, 'SHOULD HAVE FAILED'),
+  () => check('reveal stamping function is not client-callable', true),
+);
+
+// Anonymous clients hold no INSERT grant on responses at all.
+await asAnon(async (d) => {
+  await d.exec(`insert into public.responses (letter_id, author_id, body)
+                values ('${letter2Id}', '${users.mara}', 'anon forgery');`);
+}).then(
+  () => check('anon cannot submit responses', false, 'SHOULD HAVE FAILED'),
+  () => check('anon cannot submit responses', true),
+);
+
+// Legacy backfill: a pair created in the pre-0011 shape (revealed_at null,
+// trigger temporarily disabled to simulate migrated data) is stamped by the
+// migration's backfill statement, while a solo answer stays unstamped.
+const letter3Id = (
+  await db.exec(`
+    insert into public.daily_letters (couple_id, letter_date, question_id, question_text, category)
+    values ('${coupleId}', current_date - 2, (select id from public.question_bank offset 1 limit 1),
+            'Legacy completed pair', 'playful')
+    returning id;
+  `)
+)[0].rows[0].id;
+const letter4Id = (
+  await db.exec(`
+    insert into public.daily_letters (couple_id, letter_date, question_id, question_text, category)
+    values ('${coupleId}', current_date - 3, (select id from public.question_bank offset 2 limit 1),
+            'Legacy solo answer', 'playful')
+    returning id;
+  `)
+)[0].rows[0].id;
+await db.exec(`alter table public.responses disable trigger responses_reveal_stamp;`);
+await db.exec(`insert into public.responses (letter_id, author_id, body) values
+  ('${letter3Id}', '${users.mara}', 'legacy mara'),
+  ('${letter3Id}', '${users.theo}', 'legacy theo'),
+  ('${letter4Id}', '${users.mara}', 'legacy solo');`);
+await db.exec(`alter table public.responses enable trigger responses_reveal_stamp;`);
+await db.exec(`update public.responses r
+   set revealed_at = coalesce(r.revealed_at, now())
+ where r.revealed_at is null
+   and (select count(*) from public.responses c where c.letter_id = r.letter_id) >= 2;`);
+const legacyRows = (
+  await db.exec(`select letter_id, author_id, revealed_at is not null as stamped
+                 from public.responses where letter_id in ('${letter3Id}', '${letter4Id}')
+                 order by letter_id, author_id;`)
+)[0].rows;
+check(
+  'backfill stamps legacy completed pairs, leaves solo answers unstamped',
+  legacyRows.length === 3 &&
+    legacyRows.filter((r) => r.letter_id === letter3Id).every((r) => r.stamped === true) &&
+    legacyRows.filter((r) => r.letter_id === letter4Id).every((r) => r.stamped === false),
+  `stamped=${legacyRows.map((r) => (r.stamped ? 'y' : 'n')).join(',')}`
+);
+
 // 4. Pocket notes.
 await asUser('mara', async (d) => {
   await d.exec(`insert into public.pocket_notes (couple_id, author_id, body)

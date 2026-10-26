@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
@@ -10,9 +10,13 @@ function RootGate() {
   const { authReady, session, backend, mode, theme } = useApp();
   const [needsPairing, setNeedsPairing] = useState<boolean | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!authReady) return;
+    // The password-recovery screen owns navigation while it exchanges the
+    // link's tokens; gating here would yank the user away mid-recovery.
+    if (pathname === '/reset-password') return;
     if (!session) {
       router.replace('/onboarding');
       return;
@@ -28,7 +32,7 @@ function RootGate() {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- demo mode has no pairing state
       setNeedsPairing(false);
     }
-  }, [authReady, session, mode, backend, router]);
+  }, [authReady, session, mode, backend, router, pathname]);
 
   useEffect(() => {
     if (needsPairing) router.replace('/pairing');
@@ -40,6 +44,7 @@ function RootGate() {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="pairing" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="reset-password" />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

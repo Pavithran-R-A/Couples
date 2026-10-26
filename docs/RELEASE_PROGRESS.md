@@ -3,6 +3,14 @@
 Last updated: 2026-10-26 (completion session). Each item lists real verification
 performed in this session, or states plainly that verification was not possible.
 
+## Implemented and tested (Hardening session, 2026-10-26 — answer finality + auth)
+
+| Work | Evidence |
+| --- | --- |
+| P0: answers are append-only end to end | Before: 0006 granted UPDATE (and an unused DELETE) on responses to authenticated; 0003's `responses_update` policy allowed the author to rewrite the body whenever `revealed_at` was null — and nothing ever stamped it, so the gate never closed; `SupabaseRepository.submitResponse` used `.upsert()`, silently overwriting the original. Migration `20261026120000_0011_responses_append_only` drops `responses_update`, revokes UPDATE/DELETE from authenticated, and stamps `revealed_at` server-side via an AFTER INSERT trigger. The SECURITY DEFINER trigger is justified and fenced: the inserting client holds no UPDATE privilege by design, so an invoker-rights trigger could not stamp; EXECUTE is revoked from public/anon/authenticated; it validates letter existence and couple membership internally; it touches only `revealed_at` while null; an xact-scoped advisory lock (the 0009 pattern) serializes the two concurrent first inserts; it runs inside the inserting transaction, so insert and stamp commit together. No client clock or client-provided reveal value is trusted. The client now inserts and maps SQLSTATE 23505 to "already sealed". DemoRepository mirrors first-write-wins plus the same stamping rule. Row visibility still uses the live `both_partners_answered` rule, so existing rows keep exactly their previous visibility. |
+| Adversarial finality suite | 19 new checks in `scripts/migrate-and-test.mjs` (54/54 total, exit 0), asserting affected rows and stored values explicitly, never bare `true`: exact stored body; pre-reveal blindness for partner B; 23505-specific resubmission rejection with byte-identical original and count=1; UPDATE body / revealed_at / DELETE denial at the privilege level; explicit `has_table_privilege` grant surface (select+insert only); both originals visible after both submit; identical non-null server-side stamps on both rows; post-reveal edit denial; third-account view/join/alter denial; spoofed `author_id` rejection; the stamping function is not client-callable; anon insert denial; the legacy backfill stamps completed pairs and leaves solo answers unstamped. |
+| Auth session hardening | `AppProvider` now subscribes to Supabase `onAuthStateChange` (SIGNED_OUT clears the UI session; SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED refresh it) — previously a sign-out or token revocation on another device left a dead session on screen. Password recovery can now complete on-device: `resetPasswordForEmail` redirects to `projecttwo://reset-password`, the new `app/reset-password.tsx` screen parses the URL-fragment tokens, exchanges them via `auth.setSession`, and sets the new password through the new adapter method `updatePassword` (demo is an honest no-op — the fictional world has no credential store). `RootGate` skips its redirects while the pathname is `/reset-password` so gating cannot yank the user away mid-recovery. `supabaseClient.ts` already persisted sessions correctly (AsyncStorage storage, autoRefreshToken, persistSession, detectSessionInUrl:false — no change needed). |
+
 ## Implemented and tested (Completion session, 2026-10-26)
 
 | Work | Evidence |
@@ -56,9 +64,14 @@ performed in this session, or states plainly that verification was not possible.
 
 - Hosted Auth end-to-end (real signup → confirmation email → login) — requires
   an Auth-enabled hosted session exercise; the trigger and client flow are in
-  place but no live account was created during this session.
+  place but no live account was created during this session. The recovery
+  deep-link completion (hardening session) additionally requires
+  `projecttwo://reset-password` to be allow-listed in the hosted Supabase Auth
+  redirect configuration — unverifiable from this environment.
 - Pocket-note production path against live Data API (table + policies exist;
   repository methods match; no live authenticated session exercised).
+- Supabase security advisors: not run — no Supabase access token exists in
+  this environment, and hosted configuration must not be touched from here.
 
 ## Implemented and tested (Gate 4)
 

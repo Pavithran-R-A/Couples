@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BackendAdapter } from '../services/BackendAdapter';
@@ -21,6 +21,7 @@ interface AppState {
   retryBackend: () => void;
   refreshSession: (adapter?: BackendAdapter) => Promise<void>;
   enterDemo: () => Promise<void>;
+  applyRecoveryTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   theme: Theme;
   themeMode: ThemeMode;
   setThemeMode: (m: ThemeMode) => void;
@@ -43,7 +44,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [backendProbeKey, setBackendProbeKey] = useState(0);
   const retryBackend = useCallback(() => setBackendProbeKey((k) => k + 1), []);
   const mode: BackendMode = demoActive ? 'demo' : configuredMode;
-  const production: BackendAdapter | null = useMemo(() => {
+  const supabaseRepo = useMemo(() => {
     if (configuredMode !== 'supabase') return null;
     try {
       return new SupabaseRepository(createSupabaseClient());
@@ -51,6 +52,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
   }, [configuredMode]);
+  const production: BackendAdapter | null = supabaseRepo;
   const backend: BackendAdapter = demoActive ? demo : production ?? demo;
 
   // A real user must never be silently switched into the fictional demo.
@@ -131,6 +133,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await refreshSession(demo);
   }, [demo, refreshSession]);
 
+  // Live auth state: a sign-out or token revocation on another device must
+  // reach the UI instead of leaving a dead session on screen, and a sign-in
+  // (for example an email-confirmation link) must refresh the session.
+  const demoActiveRef = useRef(demoActive);
+  useEffect(() => {
+    demoActiveRef.current = demoActive;
+  }, [demoActive]);
+
+  useEffect(() => {
+    if (!supabaseRepo) return;
+    return supabaseRepo.onAuthStateChange((event) => {
+      if (demoActiveRef.current) return; // the fictional world ignores Supabase auth
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setAuthReady(true);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        supabaseRepo
+          .getSession()
+          .then((s) => setSession(s))
+          .catch(() => {});
+      }
+    });
+  }, [supabaseRepo]);
+
+  const applyRecoveryTokens = useCallback(
+    async (accessToken: string, refreshToken: string) => {
+      if (!supabaseRepo) throw new Error('Supabase is not configured');
+      await supabaseRepo.applyRecoveryTokens(accessToken, refreshToken);
+      await refreshSession(supabaseRepo);
+    },
+    [supabaseRepo, refreshSession]
+  );
+
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
@@ -139,10 +174,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      backend, mode, demo, production, authReady, session, backendNotice: backendError, retryBackend, refreshSession, enterDemo,
+      backend, mode, demo, production, authReady, session, backendNotice: backendError, retryBackend, refreshSession, enterDemo, applyRecoveryTokens,
       theme, themeMode, setThemeMode, reducedMotion, setReducedMotion,
     }),
-    [backend, mode, demo, production, authReady, session, backendError, retryBackend, refreshSession, enterDemo,
+    [backend, mode, demo, production, authReady, session, backendError, retryBackend, refreshSession, enterDemo, applyRecoveryTokens,
      theme, themeMode, setThemeMode, reducedMotion, setReducedMotion]
   );
 

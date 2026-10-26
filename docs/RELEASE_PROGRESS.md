@@ -1,8 +1,19 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-27 (acceptance-handoff session). Each item lists real
-verification performed in this session, or states plainly that verification
-was not possible.
+Last updated: 2026-10-27 (no-Supabase acceptance session). Each item lists
+real verification performed in this session, or states plainly that
+verification was not possible.
+
+## Implemented and tested (No-Supabase acceptance session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| Owner decision honored: all Supabase work DEFERRED | No login attempt, no migration, no project selection, no hosted changes. Implementation and all 11 migrations preserved unchanged. Readiness gates C/D/E reclassified DEFERRED in `FINAL_RELEASE_READINESS.md` (still earning no credit until executed). |
+| EAS authentication re-verified | `npx eas-cli whoami` → "Not logged in". EAS has no headless flow: the exact owner command is **`npx eas-cli login`** (interactive terminal). Post-login sequence documented step-by-step in `EXTERNAL_BLOCKERS.md` §3 (find/init project → replace zero placeholder → `eas env:create` → cloud build). |
+| App Links autoVerify removed (`79fbb80`) | `projecttwo.app` proven non-existent (DNS NXDOMAIN; HTTPS + assetlinks.json unresolvable). The autoVerify HTTPS intent filter was removed from `app.json`; the custom `projecttwo://` scheme (recovery path) preserved. expo-doctor 21/21, tsc 0, lint clean, export OK, **CI green**. |
+| Advisory remediation path validated as blocked | `decode-uri-component` installed version confirmed 0.2.2 (vulnerable `<=0.4.2`). The fixed 0.5.1 package was downloaded and inspected: it exports an **object**, while `query-string@7.1.3` requires a **direct function** — an override would break expo-router URL parsing at runtime (`d is not a function`). Override path concretely invalidated; remediation is the SDK 58 upgrade. `SECURITY_ACCEPTANCE.md` updated with the proof. |
+| Demo-mode visibility confirmed for the future APK | A build without Supabase env vars always runs demo mode, which self-identifies prominently: onboarding "Demonstration mode — accounts live only on this device." and Settings "Demonstration tour — Everything you see is a fictional world for Mara and Theo — no accounts, no real data." (`app/onboarding.tsx`, `app/(tabs)/settings.tsx`). No code change needed. |
+| Documentation | `ANDROID_RELEASE.md` App Links reference updated; `EXTERNAL_BLOCKERS.md` §2/§3 rewritten (DEFERRED + exact owner commands); `FINAL_RELEASE_READINESS.md` statuses updated with DEFERRED categories and unchanged ≈62% estimate. |
 
 ## Implemented and tested (Acceptance-handoff session, 2026-10-27)
 

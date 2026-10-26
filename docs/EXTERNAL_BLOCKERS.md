@@ -15,34 +15,34 @@ defect unless explicitly stated.
   `config-checks` ✅ (including `expo-doctor` 21/21 after the CNG workflow
   adoption in `e9ab64f`).
 
-## 2. Hosted Supabase project access
+## 2. Hosted Supabase project access — **DEFERRED by the owner (2026-10-27)**
 
-- **Observed:** no `.env` and no Supabase access token exists in this
-  environment; the `supabase` CLI is installed but unauthenticated.
-- **Consequences (all recorded, not attempted):** hosted project identity
-  cannot be proven from here; migration 0011 is not applied to the hosted
-  database; Supabase security advisors not run; hosted auth E2E (signup,
-  email confirmation, login, recovery email) unexecuted; hosted two-partner
-  journeys unexecuted.
-- **Unblock:** an authorized session for the Couples Supabase project
-  (access token or project-linked login) plus an isolated test account and
-  inbox access.
+- **Owner decision:** all Supabase work is deferred to a separate future
+  mission. This cycle must not attempt login, migrations, project creation,
+  hosted auth/SMTP/redirect changes or production-record operations.
+- **State when deferred:** no `.env`, no valid Supabase session (stored CLI
+  token returned "Invalid access token"); the interactive
+  `npx supabase login` browser flow cannot run headless.
+- **Implementation preserved:** every Supabase-related source file and all
+  11 migrations remain unchanged in the repository, ready for the future
+  completion mission.
 
 ## 3. EAS project linkage and credentials
 
-- **Observed:** `extra.eas.projectId` in `app.json` is the all-zeros
-  placeholder; no EAS session exists on this machine.
-- **Consequences:** no EAS cloud build has been produced; **no installable
-  APK exists**. The Android evidence in this release cycle is an Expo Go
-  runtime session on an emulator (`ANDROID_DEVICE_QA.md`) — JavaScript and
-  app logic identical to the shipped app, native shell is Expo Go's.
-- **Also:** a local `gradlew assembleDebug` attempt (from the then-committed
-  prebuild tree) was **aborted at 103 MB free disk** and produced no
-  artifact; `android/` is no longer tracked (CNG — `e9ab64f`), so EAS will
-  regenerate native config from `app.json` at build time.
-- **Unblock:** owner runs `eas login` + `eas init` and confirms the correct
-  (Couples) EAS project; `app.json` then gets the real project ID; a preview
-  APK can be built on EAS cloud runners without touching local disk.
+- **Observed (2026-10-27):** `npx eas-cli whoami` → "Not logged in";
+  `extra.eas.projectId` in `app.json` is still the all-zeros placeholder.
+- **Exact owner action (one command, interactive terminal):**
+  `npx eas-cli login` — EAS has no browser/headless flow; credentials must
+  never be provided through chat.
+- **After login, the prepared sequence is:** `eas init` (or `eas project:list`
+  to find an existing Couples project first) → replace the placeholder
+  `projectId` → `eas env:create` for the preview environment →
+  `npx eas build -p android --profile preview` (cloud runners; no local
+  disk impact; CNG means native config is regenerated from `app.json`).
+- **Consequences while blocked:** no EAS build and **no installable APK**
+  exists. The Android evidence is the Expo Go runtime session
+  (`ANDROID_DEVICE_QA.md`). A local gradle attempt was aborted at 103 MB
+  free disk and produced no artifact.
 
 ## 4. ~~Hosted App Links domain ownership~~ — RESOLVED by removal (2026-10-27)
 

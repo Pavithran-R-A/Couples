@@ -75,12 +75,19 @@ cross-couple completion denied, anon reads permission-denied.
     is a hang of the app instance when a user opens a maliciously crafted
     link. No confidentiality or integrity impact, no code execution, no
     data exposure.
-  - **Remediation path:** npm's suggested "fixes" are major-version moves
-    (Expo SDK 57 → 54 downgrade / router → 58 upgrade); no patch releases
-    exist within SDK 57. The correct remediation is the planned SDK 58
-    upgrade, not a hotfix downgrade. Accepted for the internal-distribution
-    release candidate with the SDK-58 upgrade tracked as the fix; the three
-    runtime findings are DoS-class only and do not gate this milestone.
+  - **Remediation path — validated as blocked on this tree (2026-10-27):**
+    the fixed line is **0.5.x** (registry latest 0.5.1; 0.6.x does not
+    exist). The 0.5.1 package was downloaded and its API inspected: it
+    exports an **object** (named exports), while the consuming
+    `query-string@7.1.3` requires it as a **direct function**
+    (`const decodeComponent = require('decode-uri-component')` → calling
+    0.5.1 throws `d is not a function`). A dependency override would
+    therefore break expo-router's URL parsing at runtime — the override
+    path is concretely invalid, not merely discouraged. The only clean
+    remediation is the planned Expo SDK 58 upgrade, whose dependency tree
+    pairs query-string 9.x with the fixed parser. Accepted for the
+    internal-distribution release candidate: DoS-class only, triggered by
+    a maliciously crafted link, no confidentiality/integrity impact.
 
 ## Known limitations (not vulnerabilities, stated to keep privacy claims honest)
 

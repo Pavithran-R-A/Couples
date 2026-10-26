@@ -29,9 +29,12 @@ npm run build:web    # Static web export
 ## Backend setup (for production)
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Run the SQL in `backend_src/0001_initial_schema.sql` in the SQL editor.
-   It creates all tables, row-level security policies, and the pairing,
-   letter and companion functions.
+2. Apply the **ordered migration series** in `supabase/migrations/` (0000 →
+   0011) — with the CLI: `npx supabase link --project-ref <ref>` then
+   `npx supabase db push`. Never paste the legacy monolithic
+   `backend_src/0001_initial_schema.sql` into the SQL editor; it predates
+   the security-hardening migrations and is kept only as a portable
+   reference. See `docs/SUPABASE_SETUP.md` for the full verification steps.
 3. Copy `.env.example` to `.env` and add your project URL and anon key.
 4. Optional: run `backend_src/tests/0002_reveal_privacy_test.sql` to verify
    that partner answers are unreadable before both partners have submitted.

@@ -1,8 +1,18 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-27 (CI-repair session). Each item lists real
+Last updated: 2026-10-27 (acceptance-handoff session). Each item lists real
 verification performed in this session, or states plainly that verification
 was not possible.
+
+## Implemented and tested (Acceptance-handoff session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| Dangerous setup guidance corrected (`1575b9e`) | `SUPABASE_SETUP.md` rewritten: the ordered migration series is the only schema source, the legacy monolithic `backend_src/0001_initial_schema.sql` is explicitly forbidden on hosted databases, CLI order fixed (`login` → `link` → `migration list` → `db push`), historical-project identity verification (six independent facts) takes priority over creating a new project, email confirmation stays ON with exact redirect URLs (`projecttwo://reset-password`), append-only adversarial check added. `ANDROID_RELEASE.md`: CNG workflow, deprecated `eas secret:create` replaced with current `eas env:create` environment tooling, disk warning, signing caveat. `README.md` backend section points at the series. |
+| Authentication handoff attempted, precisely recorded | `npx supabase projects list` → "Invalid access token" (stored CLI credential is expired). `npx supabase login` → **"Cannot use automatic login flow inside non-TTY environments"** — the browser flow requires an interactive terminal, so it is an owner-side action; no token was requested or accepted in chat. `npx eas-cli whoami` → "Not logged in"; interactive `eas login` likewise requires owner credentials in a terminal. Hosted phases remain BLOCKED with exact reasons; nothing was mutated. |
+| **App Links autoVerify declaration removed** (`79fbb80`) | `projecttwo.app` **does not exist** — DNS lookup returns "Non-existent domain" and both `https://projecttwo.app` and `/.well-known/assetlinks.json` fail to resolve. Shipping an autoVerify HTTPS intent filter for an unowned domain would be misleading; it was removed from `app.json` while the custom `projecttwo://` scheme is preserved (password-recovery path). Verified: expo-doctor 21/21, tsc 0, lint clean, web export OK, **CI green at `79fbb80`**. |
+| Advisory deep-dive | `decode-uri-component` installed version confirmed **0.2.2** (inside the vulnerable `<=0.4.2` range) via `expo-router` → `query-string`; runtime DoS-class only (malformed percent-encoded input), no patch within SDK 57; remediation = planned SDK 58 upgrade (or a validated override). Documented in `SECURITY_ACCEPTANCE.md`. |
+| PR #1 description refreshed | Now reflects the fully green CI status, the complete commit ledger, the ≈62% evidence-weighted readiness, and the three precise owner-side actions. |
 
 ## Implemented and tested (CI-repair session, 2026-10-27)
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { spacing, radii } from '@/theme/tokens';
 import { ErrorNote, useTheme } from '@/theme/ui';
@@ -22,6 +23,7 @@ const CARE_ACCENT: Record<string, string> = {
 };
 
 export default function CompanionTab() {
+  const insets = useSafeAreaInsets();
   const { backend, reducedMotion } = useApp();
   const theme = useTheme();
   const [state, setState] = useState<CompanionState | null>(null);
@@ -95,7 +97,7 @@ export default function CompanionTab() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 28 }]}>
           <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>Your companion</Text>
           <Text style={[styles.title, { color: theme.ink }]}>Lumi, the lantern-seed</Text>
           <Text style={[styles.tagline, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 17 }]}>
@@ -186,7 +188,7 @@ export default function CompanionTab() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  content: { padding: spacing.xl, paddingBottom: 48 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   eyebrow: {
     fontSize: 11.5,

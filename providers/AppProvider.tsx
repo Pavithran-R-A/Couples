@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Appearance } from 'react-native';
+import { Appearance, AccessibilityInfo } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BackendAdapter } from '../services/BackendAdapter';
 import { DemoRepository } from '../services/DemoRepository';
@@ -82,7 +82,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() =>
     Appearance.getColorScheme() === 'dark' ? 'moonlit' : 'daylight'
   );
+  // Reduced motion follows the OS preference unless the user has chosen
+  // explicitly in Settings (stored '1'/'0' = override; absent = follow OS).
   const [reducedMotion, setReducedMotionState] = useState(false);
+  const motionOverrideRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -90,11 +93,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const t = await AsyncStorage.getItem(THEME_KEY);
         if (t === 'daylight' || t === 'moonlit') setThemeModeState(t);
         const m = await AsyncStorage.getItem(MOTION_KEY);
-        if (m === '1') setReducedMotionState(true);
+        if (m === '1') {
+          motionOverrideRef.current = true;
+          setReducedMotionState(true);
+        } else if (m === '0') {
+          motionOverrideRef.current = false;
+          setReducedMotionState(false);
+        } else {
+          const os = await AccessibilityInfo.isReduceMotionEnabled();
+          setReducedMotionState(os);
+        }
       } catch {
         /* defaults hold */
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', (value) => {
+      if (motionOverrideRef.current === null) setReducedMotionState(value);
+    });
+    return () => sub.remove();
   }, []);
 
   const setThemeMode = useCallback((m: ThemeMode) => {
@@ -103,6 +122,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setReducedMotion = useCallback((v: boolean) => {
+    motionOverrideRef.current = v;
     setReducedMotionState(v);
     AsyncStorage.setItem(MOTION_KEY, v ? '1' : '0').catch(() => {});
   }, []);

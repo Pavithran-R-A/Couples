@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Platform, Share } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
 import { spacing, radii } from '@/theme/tokens';
@@ -8,6 +9,7 @@ import { FONT_HEAD, FONT_BODY, FONT_BOLD, FONT_EDITORIAL } from '@/theme/fonts';
 import { EnvelopeArt, Constellation } from '@/components/Illustrations';
 
 export default function Pairing() {
+  const insets = useSafeAreaInsets();
   const { backend, refreshSession } = useApp();
   const th = useTheme();
   const router = useRouter();
@@ -78,7 +80,7 @@ export default function Pairing() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: th.bg }}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 44 }]} keyboardShouldPersistTaps="handled">
           <View style={styles.heroRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.eyebrow, { color: th.inkFaint }]}>Pairing</Text>
@@ -134,7 +136,7 @@ export default function Pairing() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 84, paddingBottom: 64 },
+  content: { padding: spacing.xl, paddingBottom: 64 },
   heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   eyebrow: {
     fontSize: 12,

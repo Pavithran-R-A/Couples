@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Switch, Alert, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { spacing, radii, type ThemeMode } from '@/theme/tokens';
 import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
@@ -10,6 +11,7 @@ import { KeepsakeStamp, Constellation } from '@/components/Illustrations';
 export default function SettingsTab() {
   const { backend, demo, session, mode, refreshSession, themeMode, setThemeMode, reducedMotion, setReducedMotion } = useApp();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [reminders, setReminders] = useState(true);
   const [profile, setProfile] = useState<{ displayName: string; email: string } | null>(null);
@@ -115,7 +117,7 @@ export default function SettingsTab() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 28 }]}>
           <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>Settings</Text>
           <Text style={[styles.title, { color: theme.ink }]}>Your space, your rules.</Text>
 
@@ -241,7 +243,7 @@ export default function SettingsTab() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  content: { padding: spacing.xl, paddingBottom: 48 },
   eyebrow: {
     fontSize: 11.5,
     letterSpacing: 2,

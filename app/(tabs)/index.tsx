@@ -5,11 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Pressable,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { spacing, radii } from '@/theme/tokens';
 import { Card, SectionLabel, Button, ErrorNote, Pill, EmptyState, useTheme } from '@/theme/ui';
@@ -31,6 +31,7 @@ export default function LettersTab() {
   const { backend, mode, session, reducedMotion } = useApp();
   const theme = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const isDemo = mode === 'demo';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -151,7 +152,7 @@ export default function LettersTab() {
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingTop: insets.top + 28 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.accent} />}
         >
           {/* living-world header */}
@@ -260,16 +261,6 @@ export default function LettersTab() {
             </View>
           )}
 
-          {!myResponse && partnerResponse && (
-            <View style={[styles.waitingCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.line }]}>
-              <KeepsakeStamp size={38} glyph="moon" tone={theme.accent} />
-              <Text style={[styles.waitingTitle, { color: theme.ink }]}>A surprise waits.</Text>
-              <Text style={[styles.waitingText, { color: theme.inkSoft }]}>
-                Something is already sealed in today&apos;s envelope. Write your answer to open it.
-              </Text>
-            </View>
-          )}
-
           {adventure && (
             <View style={[styles.adventureCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.goldSoft ?? theme.line }]}>
               <View style={styles.adventureHead}>
@@ -320,7 +311,7 @@ export default function LettersTab() {
               </Text>
             ) : (
               history.slice(0, 10).map((h) => (
-                <Pressable key={h.letterId} style={[styles.historyRow, { borderBottomColor: theme.lineSoft }]}>
+                <View key={h.letterId} style={[styles.historyRow, { borderBottomColor: theme.lineSoft }]}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.historyQuestion, { color: theme.ink }]} numberOfLines={1}>
                       {h.question.text}
@@ -332,7 +323,7 @@ export default function LettersTab() {
                   <Pill tone={h.bothReplied ? 'mint' : 'gold'} theme={theme}>
                     {h.bothReplied ? 'Revealed' : 'Waiting'}
                   </Pill>
-                </Pressable>
+                </View>
               ))
             )}
           </View>
@@ -344,7 +335,7 @@ export default function LettersTab() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  content: { padding: spacing.xl, paddingBottom: 48 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerRow: {
     flexDirection: 'row',

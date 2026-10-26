@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { Button, Input, ErrorNote, Card, SectionLabel, useTheme } from '@/theme/ui';
 import { spacing } from '@/theme/tokens';
@@ -15,6 +16,7 @@ export default function ResetPassword() {
   const { production, applyRecoveryTokens } = useApp();
   const theme = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const url = Linking.useURL();
   const [phase, setPhase] = useState<Phase>('checking');
   const [reason, setReason] = useState('');
@@ -98,7 +100,7 @@ export default function ResetPassword() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 44 }]} keyboardShouldPersistTaps="handled">
         <View style={styles.heroRow}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>Recovery</Text>
@@ -159,7 +161,7 @@ export default function ResetPassword() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 84, paddingBottom: spacing.xl },
+  content: { padding: spacing.xl, paddingBottom: spacing.xl },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   eyebrow: { fontFamily: FONT_BODY, fontSize: 13, letterSpacing: 1.4, textTransform: 'uppercase' },
   title: { fontFamily: FONT_HEAD, fontSize: 30, marginTop: 4 },

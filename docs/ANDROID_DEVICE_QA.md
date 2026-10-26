@@ -9,11 +9,12 @@ Pixel_10 emulator (`sdk_gphone16k_x86_64`, API 16K image) with Expo Go
 emulator**, not the packaged production APK. The JavaScript, navigation,
 design system and all adapter logic are identical to the shipped app; the
 native shell is Expo Go's, not `com.projecttwo.app`. A `gradlew
-assembleDebug` attempt from the committed `android/` prebuild **ran out of
-disk** (~3 GB of gradle downloads + intermediates on top of a 7.5 GB AVD
-image; C: dropped to 103 MB and the build was aborted per the disk-safety
-rule). The packaged-APK gate remains open for a window with more free
-disk or an EAS build (blocked on credentials — see `EXTERNAL_BLOCKERS.md`).
+assembleDebug` attempt from the (then-committed, now CNG-untracked)
+`android/` prebuild **ran out of disk** (~3 GB of gradle downloads +
+intermediates on top of a 7.5 GB AVD image; C: dropped to 103 MB and the
+build was aborted per the disk-safety rule) and produced **no APK**. The
+packaged-APK gate remains open for a window with more free disk or an EAS
+build (blocked on credentials — see `EXTERNAL_BLOCKERS.md`).
 
 ## Runtime walkthrough (all steps executed and screenshotted)
 

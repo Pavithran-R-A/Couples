@@ -1,8 +1,18 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-26 (release-hardening session). Each item lists real
+Last updated: 2026-10-27 (CI-repair session). Each item lists real
 verification performed in this session, or states plainly that verification
 was not possible.
+
+## Implemented and tested (CI-repair session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| **First fully green GitHub Actions run** | Run **40380810505** at `6f93274`: `verify` ✅ · `SQL migration + authorization on real Postgres` ✅ · `config-checks` ✅. The owner resolved the account billing restriction; two code fixes were still required (below). |
+| CNG workflow adopted (`e9ab64f`) | expo-doctor in run 40377948930 failed ("app config fields may not be synced in a non-CNG project": orientation, icon, userInterfaceStyle, scheme, ios, android, plugins vs the committed generated `android/` tree). The tree was pure prebuild output with no handcrafted changes, so `android/` was untracked (`git rm --cached`, local copy preserved outside the repo), `/android` + `/ios` gitignored — EAS uploads follow `.gitignore` when no `.easignore` exists, so EAS regenerates native config from `app.json` + plugins at build time. Stray local pnpm lockfiles removed (repo is npm-based). **Local expo-doctor: 21/21.** |
+| Latent secrets-step shell bug fixed (`6f93274`) | The "Fail on committed secrets" step had never actually executed (all earlier runs failed earlier). Once reached, its mis-constructed `["'"']` quote idiom left an unterminated single quote → "unexpected EOF" (exit 2). Pattern rewritten double-quoted with an escaped inner quote; verified locally (git grep exit 1 = clean, `bash -n` accepts, YAML parses). |
+| Documentation reconciled | `EXTERNAL_BLOCKERS.md`: billing blocker marked RESOLVED with the green run ID; APK claims corrected — **no installable APK exists** (gradle attempt aborted at 103 MB; Expo Go emulator runtime is the Android evidence). `FINAL_RELEASE_READINESS.md`: gate L → PASS with run ID; estimate recalculated to **≈62%** under the release-contract weights (BLOCKED requirements earn no credit). |
+| Full local verification at `6f93274` | expo-doctor 21/21 · `tsc --noEmit` 0 · `expo lint --max-warnings 0` clean · 4 test suites PASS · migration replay 55/55 over 11 migrations · `expo install --check` clean · web export OK · secret scans OK · workflow YAML parses. |
 
 ## Implemented and tested (Release-hardening session, 2026-10-26)
 

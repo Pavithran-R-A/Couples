@@ -1,40 +1,49 @@
 # Final release readiness — Couples (Project Two)
 
-Branch `completion/consumer-release`, evidence recorded per commit. States:
+Updated 2026-10-27. Branch `completion/consumer-release`. States:
 **PASS** = independently demonstrated · **FAIL** = demonstrated defect ·
 **BLOCKED** = missing external dependency · **NOT TESTED** = no trustworthy
-evidence yet. Blocked items are tracked in `EXTERNAL_BLOCKERS.md`.
+evidence yet. Blockers are tracked in `EXTERNAL_BLOCKERS.md`.
+
+## Acceptance gates
 
 | Gate | State | Evidence |
 | --- | --- | --- |
-| A. Source & Git history intact | **PASS** | Recovery branch `b8821b5` preserved; linear completion commits on top; no force-push; `main` untouched; PR #1 open and mergeable. |
-| B. Core feature completeness | **PASS (source+demo)** | All features implemented and exercised by the demo-world suites (letters with sealing/reveal, reactions, companion care, memories/milestones, moods, pocket notes, weekly adventures with 4 distinct stages, pairing, settings, theming). Photo keepsakes and notification reminders are documented non-features in this build. |
-| C. Hosted database migration parity | **BLOCKED** | Local replay: 11/11 migrations clean, 55/55 authorization checks (PGlite). Hosted project identity/ownership unprovable here (no Supabase credentials); 0011 not yet applied to hosted. |
-| D. Real Supabase authentication | **NOT TESTED** | Full auth source paths implemented (signup w/ server-side profile trigger, email-confirmation routing, sign-in with session refresh, live auth events, recovery deep-link completion). Requires hosted credentials + test inbox. |
-| E. Two independent partner sessions | **PARTIAL — NOT TESTED on backend** | The authorization matrix proves the two-person contract at the database level (three identities, real roles/JWTs, 55 checks). A live two-account app session is NOT TESTED. |
-| F. Privacy & RLS | **PASS (local)** | Append-only answers; privilege-level UPDATE/DELETE revocation; adversarial isolation checks; secrets scans clean. See `SECURITY_ACCEPTANCE.md`. |
-| G. Response sealing/reveal correctness | **PASS (local)** | Sealed-until-both, byte-identical originals, server-side stamps, post-reveal immutability — asserted against real Postgres. |
-| H. Memories, moods, companion, adventures | **PASS (local)** | Demo suites + memory edit wired end-to-end; adventure RPC matrix asserted; doodle serialization race fixed. |
-| I. Offline behavior & error handling | **PASS (source-level)** | Per-action ErrorNote copy, retry affordances, blocking backend notice for configured builds, demo never silently replaces production. Full offline device scenarios NOT TESTED on hardware. |
-| J. Mobile accessibility & device UI | **PASS (emulator, this cycle)** | Safe-area insets everywhere, Button a11y roles/state, OS reduce-motion honored; emulator walkthrough recorded in `ANDROID_DEVICE_QA.md`. Physical-device QA NOT TESTED. |
-| K. Deep links & password recovery | **PASS (local parser)** | Parser: 11/11 regression checks (fragment/query/error/malformed forms). Hosted redirect allow-list + real email flow NOT TESTED. |
-| L. GitHub CI | **BLOCKED** | Workflow healthy (3 jobs created — YAML fix proven). Jobs fail before any step on account billing. Local equivalents of every CI step pass. |
-| M. Installable Android APK | **BLOCKED** | Local `gradlew assembleDebug` from the committed `android/` prebuild aborted at 103 MB free disk (gradle downloads + intermediates over a 7.5 GB AVD image); EAS cloud build blocked on credentials. Runtime QA ran via Expo Go 57 instead (see N). |
-| N. On-device acceptance | **PASS (emulator, Expo Go runtime)** | Full demo two-person lifecycle executed and screenshotted: seal → pre-reveal blindness → reveal with byte-identical originals; cold-restart session restore; a11y tree verified; no fatal logcat errors (`docs/ANDROID_DEVICE_QA.md`). Physical-device and production-APK acceptance NOT TESTED. |
-| O. Release documentation | **PASS** | This file, `SECURITY_ACCEPTANCE.md`, `EXTERNAL_BLOCKERS.md`, `ANDROID_DEVICE_QA.md`, `RELEASE_PROGRESS.md`. |
+| A. Source & Git history intact | **PASS** | Recovery branch `b8821b5` preserved; linear completion commits; no force-push; `main` untouched; PR #1 open. |
+| B. Core feature completeness | **PASS (source + demo runtime)** | All designed features implemented and exercised: letters with append-only sealing/reveal, reactions, companion care, memories (incl. working edit), milestones, moods, pocket notes, weekly adventures (4 stage kinds, doodle serialization), pairing, settings, theming. Photo keepsakes and notification reminders are declared non-features of this build. |
+| C. Hosted database migration parity | **BLOCKED** | Local replay: 11/11 migrations, 55/55 authorization checks (PGlite, real roles/JWTs). No Supabase credentials exist in this environment; hosted project identity unproven; 0011 not applied to hosted. |
+| D. Real Supabase authentication | **NOT TESTED (hosted)** | Full auth source paths implemented (server-side profile trigger, email-confirmation routing, sign-in with session refresh, live `onAuthStateChange`, recovery deep-link completion with parser regression suite). Requires hosted credentials + test inbox. |
+| E. Two independent partner sessions | **PARTIAL — hosted NOT TESTED** | Two-person contract proven at the database level (3 identities, real roles/JWTs, 55 checks) and through the demo UI on Android (seal → blindness → byte-identical reveal). Live hosted two-account session NOT TESTED. |
+| F. Privacy & RLS | **PASS (local)** | Append-only answers enforced at the privilege level; hardened private-schema reveal trigger; adversarial isolation checks; secret scans clean; dependency audit reduced 17 → 8 findings (toolchain-only remainder documented). See `SECURITY_ACCEPTANCE.md`. |
+| G. Response sealing/reveal correctness | **PASS (local + demo runtime)** | Sealed-until-both, byte-identical originals, identical server-side stamps, post-reveal immutability — asserted against real Postgres and demonstrated in the Android demo flow. |
+| H. Memories, moods, companion, adventures | **PASS (local)** | Demo suites + memory edit wired end-to-end; adventure RPC matrix asserted; doodle race fixed. |
+| I. Offline behavior & error handling | **PASS (source-level)** | Per-action error notes, retry affordances, blocking backend notice for configured builds, demo never silently replaces production. Deliberate offline device scenarios NOT TESTED. |
+| J. Mobile accessibility & device UI | **PASS (emulator, Expo Go runtime)** | Safe-area insets everywhere, Button a11y roles verified live via the UI-Automator tree, OS reduce-motion honored; walkthrough in `ANDROID_DEVICE_QA.md`. Small/large screens, 3-button nav, font-scale extremes and physical devices NOT TESTED. |
+| K. Deep links & password recovery | **PASS (local parser)** | Parser 11/11 regression checks (fragment/query/error/malformed forms). Hosted redirect allow-list + real email flow NOT TESTED. |
+| L. GitHub CI | **PASS** | Run **40380810505** at `6f93274` — the repository's first fully green run: `verify` ✅, `SQL migration + authorization on real Postgres` ✅, `config-checks` ✅ (expo-doctor 21/21 after CNG adoption `e9ab64f` + secrets-step quoting fix `6f93274`). |
+| M. Installable Android APK | **BLOCKED** | **No APK exists.** Local gradle attempt aborted at 103 MB free disk (no artifact); EAS blocked on credentials/`eas init` (`extra.eas.projectId` still placeholder). CNG workflow adopted so EAS regenerates native config from `app.json`. |
+| N. On-device acceptance | **PASS (emulator, Expo Go runtime — labeled)** | Full demo two-person lifecycle: seal → pre-reveal blindness → byte-identical reveal; cold-restart session restore; no fatal logcat errors (`docs/ANDROID_DEVICE_QA.md`). Standalone-APK and physical-device acceptance NOT TESTED. |
+| O. Release documentation | **PASS** | `FINAL_RELEASE_READINESS.md`, `SECURITY_ACCEPTANCE.md`, `EXTERNAL_BLOCKERS.md`, `ANDROID_DEVICE_QA.md`, `RELEASE_PROGRESS.md` — APK/billing/CI statements reconciled with the actual artifacts. |
 
 ## Weighted completion estimate
 
-Basis: the weights below reflect what a consumer release actually needs;
-each gate's score is 100% only for independently demonstrated evidence.
+Weights per the release contract. A BLOCKED or NOT TESTED requirement earns
+no credit for that requirement; verified subrequirements retain theirs.
 
-- Implementation & code quality (B, F, G, H, I source work): 100% demonstrated locally → weighted ~35% of total: **full**.
-- Database/backend correctness (C, F, G): local replay proven; hosted parity and advisors outstanding → weighted ~20%: **~70% earned**.
-- Real authentication & two-person journeys (D, E, K-hosted): ~15%: **~25% earned** (parser + DB contract proven; live journeys not).
-- CI (L): ~10%: **~60% earned** (pipeline healthy; verdict blocked on billing).
-- Android artifact & device QA (M, N, J): ~20%: **~55% earned** (emulator runtime QA complete with real two-person flows; packaged APK and physical devices outstanding).
+| Category | Weight | Earned | Basis |
+| --- | ---: | ---: | --- |
+| Core functionality and code quality | 20% | 18.0 | All core features implemented, 4 test suites + tsc + lint green, demo runtime verified on Android; deliberate offline matrix unexecuted. |
+| Security, privacy and database correctness | 20% | 16.0 | 55/55 authz checks, append-only answers, hardened private-schema trigger, secret scans, dependency audit; hosted advisors and hosted 0011 application outstanding. |
+| Real hosted authentication and two-partner flows | 20% | 5.0 | Full auth/recovery source + parser suite + DB-level contract proven; every live hosted journey unexecuted (credentials). |
+| Android APK build and standalone installation | 15% | 3.0 | CNG configuration complete and CI-validated; **no APK artifact, no signature, no standalone install** (disk + EAS credentials). Expo Go runtime credit counted under UX. |
+| Mobile UX, accessibility and reliability | 10% | 6.0 | Emulator walkthrough with screenshots, a11y tree verified, safe-area/motion fixes; limited screen/mode coverage (one emulator, demo mode). |
+| GitHub CI and release engineering | 10% | 9.5 | First fully green 3/3 run (40380810505 @ `6f93274`) at the exact pushed commit; PR evidence current. |
+| Documentation and reproducibility | 5% | 4.75 | Five evidence documents reconciled with artifacts; every claim traceable to commands/run IDs. |
+| **Total** | **100%** | **≈ 62%** | |
 
-**Overall: ≈ 70% of verified consumer-release readiness.** The remaining
-28% is dominated by owner-side external dependencies (GitHub billing, a
-Supabase authorized session, EAS credentials); no open code defect is known
-to block them.
+**Overall: ≈ 62% of verified consumer-release readiness.** The remaining
+38% is dominated by two owner-side dependencies — an authorized Couples
+Supabase session (unlocks hosted migration, advisors, real auth and
+two-partner journeys ≈ 22 points) and EAS credentials/disk headroom for a
+packaged APK (≈ 12 points). No open code defect is known to block them;
+CI is fully green and stays green at the pushed HEAD.

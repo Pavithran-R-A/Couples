@@ -109,7 +109,8 @@ jobs:
           echo "secret check OK"
 
       - name: Validate eas.json build profiles
-        run: node -e "
+        run: |
+          node -e "
           const e = require('./eas.json');
           for (const p of ['preview','production']) {
             if (!e.build[p]) throw new Error('missing profile ' + p);
@@ -119,4 +120,4 @@ jobs:
           if (e.build.preview.environment !== 'preview') throw new Error('preview must use EAS environment \"preview\"');
           if (e.build.production.environment !== 'production') throw new Error('production must use EAS environment \"production\"');
           console.log('eas.json profiles OK');
-        "
+          "

@@ -30,11 +30,12 @@ jobs:
       - name: Lint (blocking)
         run: npx expo lint --max-warnings 0
 
-      - name: Unit tests (demo world)
+      - name: Unit tests (demo world + recovery parser)
         run: |
           npx tsx backend_src/tests/reveal_privacy_demo.test.ts
           npx tsx backend_src/tests/preview_smoke.test.ts
           npx tsx backend_src/tests/demo_tour.test.ts
+          npx tsx backend_src/tests/recovery_link.test.ts
 
       - name: Web build
         run: npx expo export --platform web

@@ -7,41 +7,9 @@ import { Button, Input, ErrorNote, Card, SectionLabel, useTheme } from '@/theme/
 import { spacing } from '@/theme/tokens';
 import { FONT_HEAD, FONT_BODY, FONT_EDITORIAL } from '@/theme/fonts';
 import { WaxSeal, EngravedDivider } from '@/components/Ornaments';
+import { parseRecoveryLink } from '@/services/recoveryLink';
 
 type Phase = 'checking' | 'ready' | 'invalid';
-
-// Recovery links deliver their tokens in the URL fragment
-// (#access_token=…&refresh_token=…); expired-link errors may arrive as query
-// parameters. React Native ships no URLSearchParams, so this parses both
-// sections by hand.
-function parseRecoveryUrl(raw: string | null): { accessToken: string; refreshToken: string } | { error: string } | null {
-  if (!raw || !raw.startsWith('projecttwo://')) return null;
-  const queryIndex = raw.indexOf('?');
-  const hashIndex = raw.indexOf('#');
-  const query = queryIndex >= 0 ? raw.slice(queryIndex + 1, hashIndex >= 0 ? hashIndex : undefined) : '';
-  const fragment = hashIndex >= 0 ? raw.slice(hashIndex + 1) : '';
-  const params: Record<string, string> = {};
-  for (const section of [query, fragment]) {
-    for (const part of section.split('&')) {
-      if (!part) continue;
-      const eq = part.indexOf('=');
-      const key = eq >= 0 ? part.slice(0, eq) : part;
-      const value = eq >= 0 ? part.slice(eq + 1) : '';
-      try {
-        params[decodeURIComponent(key)] = decodeURIComponent(value.replace(/\+/g, ' '));
-      } catch {
-        params[key] = value;
-      }
-    }
-  }
-  if (params.error) {
-    return { error: params.error_description || 'That recovery link is no longer valid. Request a fresh one from the sign-in screen.' };
-  }
-  if (params.access_token && params.refresh_token) {
-    return { accessToken: params.access_token, refreshToken: params.refresh_token };
-  }
-  return null; // no recovery payload yet — keep waiting for the deep link
-}
 
 export default function ResetPassword() {
   const { production, applyRecoveryTokens } = useApp();
@@ -58,16 +26,16 @@ export default function ResetPassword() {
 
   useEffect(() => {
     if (phase !== 'checking') return;
-    const parsed = parseRecoveryUrl(url);
-    if (!parsed) return;
+    const parsed = parseRecoveryLink(url);
+    if (parsed.kind === 'none') return;
     let cancelled = false;
     const run = async () => {
       // Every state transition below happens after an await, so the effect
       // never sets state synchronously during commit.
       await Promise.resolve();
       if (cancelled) return;
-      if ('error' in parsed) {
-        setReason(parsed.error);
+      if (parsed.kind === 'error') {
+        setReason(parsed.message);
         setPhase('invalid');
         return;
       }
@@ -91,6 +59,19 @@ export default function ResetPassword() {
       cancelled = true;
     };
   }, [url, phase, production, applyRecoveryTokens]);
+
+  // Never leave the user on "unsealing your link" forever: if no recovery
+  // payload arrives (manual navigation, dropped link), offer a way back. A
+  // present link owns the flow — its exchange may legitimately take longer.
+  useEffect(() => {
+    if (phase !== 'checking') return;
+    if (parseRecoveryLink(url).kind !== 'none') return;
+    const timer = setTimeout(() => {
+      setReason('No recovery link was detected. Request a fresh one from the sign-in screen.');
+      setPhase('invalid');
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [phase, url]);
 
   const submit = async () => {
     setError('');

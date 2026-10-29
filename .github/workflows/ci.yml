@@ -37,6 +37,7 @@ jobs:
           npx tsx backend_src/tests/demo_tour.test.ts
           npx tsx backend_src/tests/recovery_link.test.ts
           npx tsx backend_src/tests/demo_flag.test.ts
+          npx tsx backend_src/tests/build_config.test.ts
 
       - name: Web build
         run: npx expo export --platform web

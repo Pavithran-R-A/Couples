@@ -59,7 +59,28 @@ defect unless explicitly stated.
   the domain, the App Links filter can be reinstated together with a
   `/.well-known/assetlinks.json` carrying the real signing fingerprint.
 
-## 5. Local disk headroom
+## 5. Local disk exhaustion — OWNER ACTION REQUIRED (2026-10-30)
+
+- **C: free space reached 0 GB.** Read-only diagnostics identified where the
+  space went; nothing was deleted or altered:
+  - `Pixel_10.avd` total **11 GB**: `userdata-qemu.img.qcow2` **5.5 GB**,
+    emulator **snapshots 4.1 GB**, `sdcard.img` 512 MB, cache 197 MB.
+  - `%TEMP%` ~1.06 GB (mixed system files), npm caches ~0.2 GB (cleaned),
+    project `node_modules` 785 MB (required for development),
+    `.gradle` 136 MB, `.qa` evidence 132 MB (incl. the APK local copy).
+- **No second drive exists** on this machine, so AVD migration to another
+  volume is not possible locally; an external/USB drive would be needed.
+- **The emulator is not running** — nothing is actively writing; the disk
+  state is static.
+- **Approval-required reclaim levers (owner decision, none executed):**
+  1. Delete the AVD **snapshots** (4.1 GB) — data-preserving (userdata is a
+     separate image) but it alters the shared AVD's quick-boot state;
+  2. Move the AVD to external storage and repoint `ANDROID_AVD_HOME`;
+  3. Free space elsewhere on C:.
+- **Consequence:** GUI automation of the standalone APK is paused — it both
+  requires and grows disk. Standalone tap-tests already executed remain
+  valid (see `ANDROID_DEVICE_QA.md`); the rest are NOT TESTED.
+
 
 - **Observed:** C: dropped to 103 MB during the gradle attempt and sits
   around 1.9-2 GB free; the Pixel_10 AVD image alone is 7.5 GB.

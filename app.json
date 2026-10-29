@@ -17,7 +17,9 @@
         "monochromeImage": "./assets/images/icon.png",
         "backgroundColor": "#151D32"
       },
-      "permissions": ["POST_NOTIFICATIONS"]
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -49,9 +51,11 @@
       "typedRoutes": true
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "0cf977e7-83df-4fb0-ba46-cb5c436a50ca"
       }
-    }
+    },
+    "owner": "pavithran29"
   }
 }

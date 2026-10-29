@@ -1,8 +1,16 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-27 (demo-APK preparation session). Each item lists real
-verification performed in this session, or states plainly that verification
-was not possible.
+Last updated: 2026-10-29 (final standalone QA + reconciliation session). Each
+item lists real verification performed in this session, or states plainly
+that verification was not possible.
+
+## Implemented and tested (Final QA + reconciliation session, 2026-10-29)
+
+| Work | Evidence |
+| --- | --- |
+| Phase 1 — emulator protection check | NinniNest verified **restored to its original enabled state** via read-only inspection (`enabled=1`, versionName 0.9.0, installed, not suspended — data untouched). Couples installed as v1.0.0 (versionCode 1). Disk measured 904 MB free (below the 2 GB reserve; the shared AVD image grew to 11 GB) — **GUI automation stopped for this cycle** per the safety rule; secondary standalone tap-tests recorded NOT TESTED. |
+| Phase 2 — EAS build metadata re-verified | Authenticated `eas build:list` re-read: build `c4891307-9f4d-4af4-bf5e-29b15f801b18`, **status finished**, profile preview (internal APK), **source commit `d6e0e29`** (later commits are docs/evidence only), fingerprint `6cc04aca…`, artifact URL + logs URL confirmed. Local APK copy re-hashed: SHA-256 `e3714d211e778e67ae5e91f9969ec52eb1ade28f1418da360f008fe776ee0be8` (intact). |
+| Phase 5 — evidence reconciliation | `FINAL_RELEASE_READINESS.md`: authoritative total corrected to **71.25%** (the category credits sum exactly; earlier 62%/70% drafts noted as historical); Android demo labeled **≈92%, not 100% certified**; gate M now distinguishes APK source commit `d6e0e29` from later doc commits; gate N marks secondary standalone tap-tests NOT TESTED with the environment-safety reason. `EXTERNAL_BLOCKERS.md` §3 rewritten: EAS authenticated (pavithran29), project linked, real APK produced — the stale "unauthenticated / no APK" text is gone. `ANDROID_DEVICE_QA.md`: NinniNest restoration verification, commit distinction, automation-stop record. |
 
 ## Implemented and tested (Demo-APK preparation session, 2026-10-27)
 

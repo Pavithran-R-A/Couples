@@ -53,7 +53,7 @@ Executed **without Expo Go and without Metro** (release bundle embedded):
    (`.qa/apk-16-state.png`).
 9. **Stability** — logcat across the whole session: **0 fatal exceptions**.
 
-### Automation incident (disclosed)
+### Automation incident (disclosed) and restoration verification
 
 This shared AVD also hosts the owner's other test app,
 `app.ninninest.journal`, plus system apps (Play/GMS/Google) that surface
@@ -63,8 +63,16 @@ subsequent blind taps landed in its Settings (one near "Erase all data";
 any confirmation dialog was dismissed by a following ESC **without
 consent**, and its data remained intact — "4 care events" before and
 after, no import/export executed). The app was then `pm disable-user`d to
-secure the QA session and **re-enabled after QA completed** (Play re-enabled
-it once during the session). Its data was never modified. Couples's own
+secure the QA session and re-enabled after QA completed (Play re-enabled it
+once mid-session). **Restoration verified read-only on 2026-10-29:**
+`enabled=1` (its original state), versionName 0.9.0, installed, not hidden,
+not suspended — data untouched throughout. The APK binary corresponds to
+source commit `d6e0e29`; later pushed commits (`e5b6064`, current HEAD) are
+evidence/documentation only. **GUI automation was then stopped for this
+cycle:** the shared AVD kept surfacing system apps + NinniNest, and free
+disk hit 904 MB (AVD image grew to 11 GB) — below the 2 GB reserve — so the
+remaining standalone tap-tests (reaction tap timing, Us/Lumi/doodle
+deep-interactions) are recorded NOT TESTED rather than risked. Couples's own
 state survived every interruption.
 
 ### Not tested on the standalone APK (labeled honestly)

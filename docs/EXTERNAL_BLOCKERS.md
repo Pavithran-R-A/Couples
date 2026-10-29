@@ -27,27 +27,24 @@ defect unless explicitly stated.
   11 migrations remain unchanged in the repository, ready for the future
   completion mission.
 
-## 3. EAS project linkage and credentials
+## 3. ~~EAS project linkage and credentials~~ — RESOLVED (2026-10-29)
 
-- **Observed (2026-10-27):** `npx eas-cli whoami` → "Not logged in";
-  `extra.eas.projectId` in `app.json` is still the all-zeros placeholder.
-- **Authentication is device-code based and ready:** a login daemon is
-  running that continuously presents fresh device codes (written to the
-  workspace file `.qa/eas-login-code.txt`). The owner approves the current
-  code at **https://expo.dev/oauth/device** (logged in as the correct Expo
-  account) and the login completes automatically — no credentials ever pass
-  through the agent. Codes expire after a few minutes and are replaced
-  automatically for up to ~2 hours per daemon run.
-- **After login, the prepared sequence is:** `eas init` (or `eas project:list`
-  to find an existing Couples project first) → replace the placeholder
-  `projectId` → `eas env:create` for the preview environment (including
-  `EXPO_PUBLIC_FORCE_DEMO=1`) →
-  `npx eas build -p android --profile preview` (cloud runners; no local
-  disk impact; CNG means native config is regenerated from `app.json`).
-- **Consequences while blocked:** no EAS build and **no installable APK**
-  exists. The Android evidence is the Expo Go runtime session
-  (`ANDROID_DEVICE_QA.md`). A local gradle attempt was aborted at 103 MB
-  free disk and produced no artifact.
+- **The owner completed Expo device authentication** (account `pavithran29`,
+  Owner; also owns `pavithran29s-team`). No credentials passed through any
+  agent.
+- **Project created and linked:** `@pavithran29/project-two`
+  (ID `0cf977e7-83df-4fb0-ba46-cb5c436a50ca`) — the all-zero placeholder in
+  `app.json` was replaced by `eas init --account pavithran29`.
+- **Preview environment:** exactly one variable, `EXPO_PUBLIC_FORCE_DEMO=1`
+  (project-scoped; verified via `eas env:list`) — the demo build cannot
+  reach any Supabase backend.
+- **Real APK produced:** build `c4891307-9f4d-4af4-bf5e-29b15f801b18`,
+  profile `preview` (internal APK), source commit `d6e0e29`, status
+  **finished**; artifact SHA-256
+  `e3714d211e778e67ae5e91f9969ec52eb1ade28f1418da360f008fe776ee0be8`,
+  installed and QA'd on the emulator (`ANDROID_DEVICE_QA.md`).
+- **Remaining (not blockers for the demo artifact):** physical-device QA,
+  production/store signing, and the deferred Supabase milestone (§2).
 
 ## 4. ~~Hosted App Links domain ownership~~ — RESOLVED by removal (2026-10-27)
 

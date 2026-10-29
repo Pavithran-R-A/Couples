@@ -1,8 +1,17 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-27 (no-Supabase acceptance session). Each item lists
-real verification performed in this session, or states plainly that
-verification was not possible.
+Last updated: 2026-10-27 (demo-APK preparation session). Each item lists real
+verification performed in this session, or states plainly that verification
+was not possible.
+
+## Implemented and tested (Demo-APK preparation session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| Demo-build isolation flag (`8c9c025`) | `EXPO_PUBLIC_FORCE_DEMO=1` forces the fictional Mara/Theo demo flow unconditionally via a single gate in `isSupabaseConfigured()` — even if other `EXPO_PUBLIC_*` variables exist (e.g. inherited account-wide EAS variables), so a demo APK can never connect to a real Supabase backend. Production behavior unchanged when unset. 4 regression tests (`backend_src/tests/demo_flag.test.ts`): flag-wins over present production config, non-`'1'` values ignored, unset restores production. Registered as `test:demoflag` + CI. All PASS locally. |
+| CI scan false-positive fixed (`5eae22b`) | The new test fixture's dummy key assignment tripped the hardcoded-key scan; its pathspec now excludes `backend_src/tests` (aligned with the eyJ scan). Real JWT-shaped material in tests still caught; `.env` still fully checked. **CI 3/3 green at `5eae22b`.** |
+| EAS authentication | Still "Not logged in" (re-verified; no EXPO_TOKEN, no `~/.expo` session). A visible console window running `npx eas-cli login` was opened for the owner to enter credentials directly (credentials never pass through the agent). Build steps remain queued on this single owner action. |
+| Full local verification at `5eae22b` | expo-doctor 21/21 · `tsc --noEmit` 0 · `expo lint --max-warnings 0` clean · demo-flag + recovery suites PASS · migration replay 55/55 over 11 migrations. |
 
 ## Implemented and tested (No-Supabase acceptance session, 2026-10-27)
 

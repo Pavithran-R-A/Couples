@@ -31,12 +31,17 @@ defect unless explicitly stated.
 
 - **Observed (2026-10-27):** `npx eas-cli whoami` → "Not logged in";
   `extra.eas.projectId` in `app.json` is still the all-zeros placeholder.
-- **Exact owner action (one command, interactive terminal):**
-  `npx eas-cli login` — EAS has no browser/headless flow; credentials must
-  never be provided through chat.
+- **Authentication is device-code based and ready:** a login daemon is
+  running that continuously presents fresh device codes (written to the
+  workspace file `.qa/eas-login-code.txt`). The owner approves the current
+  code at **https://expo.dev/oauth/device** (logged in as the correct Expo
+  account) and the login completes automatically — no credentials ever pass
+  through the agent. Codes expire after a few minutes and are replaced
+  automatically for up to ~2 hours per daemon run.
 - **After login, the prepared sequence is:** `eas init` (or `eas project:list`
   to find an existing Couples project first) → replace the placeholder
-  `projectId` → `eas env:create` for the preview environment →
+  `projectId` → `eas env:create` for the preview environment (including
+  `EXPO_PUBLIC_FORCE_DEMO=1`) →
   `npx eas build -p android --profile preview` (cloud runners; no local
   disk impact; CNG means native config is regenerated from `app.json`).
 - **Consequences while blocked:** no EAS build and **no installable APK**

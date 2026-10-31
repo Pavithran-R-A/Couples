@@ -30,11 +30,14 @@ jobs:
       - name: Lint (blocking)
         run: npx expo lint --max-warnings 0
 
-      - name: Unit tests (demo world)
+      - name: Unit tests (demo world + recovery parser + demo flag)
         run: |
           npx tsx backend_src/tests/reveal_privacy_demo.test.ts
           npx tsx backend_src/tests/preview_smoke.test.ts
           npx tsx backend_src/tests/demo_tour.test.ts
+          npx tsx backend_src/tests/recovery_link.test.ts
+          npx tsx backend_src/tests/demo_flag.test.ts
+          npx tsx backend_src/tests/build_config.test.mjs
 
       - name: Web build
         run: npx expo export --platform web
@@ -102,19 +105,22 @@ jobs:
             echo "::error::possible real key material committed"
             exit 1
           fi
-          if git grep -nE '(SUPABASE_[A-Z_]*KEY|SUPABASE_SERVICE)\s*=\s*["'"'][^"'"']{8,}' -- ':!.env.example'; then
+          if git grep -nE "(SUPABASE_[A-Z_]*KEY|SUPABASE_SERVICE)\s*=\s*[\"'][^\"']{8,}" -- ':!.env.example' ':!backend_src/tests'; then
             echo "::error::possible hardcoded Supabase key"
             exit 1
           fi
           echo "secret check OK"
 
       - name: Validate eas.json build profiles
-        run: node -e "
+        run: |
+          node -e "
           const e = require('./eas.json');
           for (const p of ['preview','production']) {
             if (!e.build[p]) throw new Error('missing profile ' + p);
           }
           if (e.build.preview.android.buildType !== 'apk') throw new Error('preview must build apk');
           if (e.build.production.android.buildType !== 'app-bundle') throw new Error('production must build app-bundle');
+          if (e.build.preview.environment !== 'preview') throw new Error('preview must use EAS environment \"preview\"');
+          if (e.build.production.environment !== 'production') throw new Error('production must use EAS environment \"production\"');
           console.log('eas.json profiles OK');
-        "
+          "

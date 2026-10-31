@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useApp } from '@/providers/AppProvider';
 
@@ -44,6 +45,7 @@ function TabIcon({ name, color }: { name: string; color: string }) {
 
 export default function TabsLayout() {
   const { theme } = useApp();
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -53,8 +55,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: theme.mode === 'moonlit' ? theme.bgDeep : theme.surface,
           borderTopColor: theme.line,
-          height: 84,
+          height: 84 + insets.bottom,
           paddingTop: 8,
+          paddingBottom: insets.bottom,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}

@@ -1,9 +1,111 @@
 # Project Two — Release Progress Evidence Register
 
-Last updated: 2026-10-17. Each item lists real verification performed in this
-session, or states plainly that verification was not possible.
+Last updated: 2026-10-29 (final standalone QA + reconciliation session). Each
+item lists real verification performed in this session, or states plainly
+that verification was not possible.
 
-## Implemented and tested
+## Implemented and tested (Physical-device acceptance session, 2026-10-31)
+
+| Work | Evidence |
+| --- | --- |
+| **Physical-device acceptance on the owner's POCO M4 Pro 5G** | Xiaomi POCO M4 Pro 5G (22031116AI), Android 13 (SDK 33), arm64-v8a, 11 GB free. The SHA-256-verified demo APK installed via adb (after the owner enabled MIUI "Install via USB" — first attempts failed with `INSTALL_FAILED_USER_RESTRICTED`, a Xiaomi gate, disclosed). Cold launch without Expo Go/Metro; full two-person demo journey on hardware: Mara seal (read-only) → Theo pre-reveal blindness (a11y-scan verified) → Theo seal → byte-exact reveal → Love reaction persisted across perspectives → pocket note sent → Lumi "Give water" Warmth 42→46 → **offline (airplane mode) cold restart preserves everything** → 0 fatal exceptions/ANRs. Screenshots `.qa/phone-*.png`; three committed in `docs/qa/`. |
+| EAS project linked; demo-isolated preview build produced | `@pavithran29/project-two` (ID `0cf977e7-83df-4fb0-ba46-cb5c436a50ca`); preview env = exactly `EXPO_PUBLIC_FORCE_DEMO=1`; build `c4891307-9f4d-4af4-bf5e-29b15f801b18` (source `d6e0e29`) finished; artifact SHA-256 `e3714d21…776ee0be8`, 131,841,274 bytes, signed (cert `3760b917…6467b0`). |
+| Evidence reconciliation | `FINAL_RELEASE_READINESS.md` table total corrected 62% → 71.25% (credit sum); `EXTERNAL_BLOCKERS.md` §3 rewritten to the resolved EAS state and §5 rewritten with the disk diagnostics + approval-ready snapshot plan (4.1 GB snapshots — NOT executed without approval). |
+
+## Final session addendum (2026-10-31 — storage-limited)
+
+- **Weekly adventure completion as Theo (hardware): NOT TESTED — suspended by the storage emergency.** C: fell to 750 MB (below the 2 GB reserve) during the attempt; the already-captured standalone evidence (core journeys, offline restart, settings) stands. The three non-current adventure types remain covered by the automated suites and the 55-check migration authorization matrix, not by hardware taps.
+- `FINAL_RELEASE_READINESS.md` total corrected to the exact credit sum **72.25%**.
+- Physical-device evidence preserved: `docs/qa/standalone-*.png`, `.qa/phone-*.png` (13 device screenshots).
+
+## Implemented and tested (Final QA + reconciliation session, 2026-10-29)
+
+| Work | Evidence |
+| --- | --- |
+| Phase 1 — emulator protection check | NinniNest verified **restored to its original enabled state** via read-only inspection (`enabled=1`, versionName 0.9.0, installed, not suspended — data untouched). Couples installed as v1.0.0 (versionCode 1). Disk measured 904 MB free (below the 2 GB reserve; the shared AVD image grew to 11 GB) — **GUI automation stopped for this cycle** per the safety rule; secondary standalone tap-tests recorded NOT TESTED. |
+| Phase 2 — EAS build metadata re-verified | Authenticated `eas build:list` re-read: build `c4891307-9f4d-4af4-bf5e-29b15f801b18`, **status finished**, profile preview (internal APK), **source commit `d6e0e29`** (later commits are docs/evidence only), fingerprint `6cc04aca…`, artifact URL + logs URL confirmed. Local APK copy re-hashed: SHA-256 `e3714d211e778e67ae5e91f9969ec52eb1ade28f1418da360f008fe776ee0be8` (intact). |
+| Phase 5 — evidence reconciliation | `FINAL_RELEASE_READINESS.md`: authoritative total corrected to **71.25%** (the category credits sum exactly; earlier 62%/70% drafts noted as historical); Android demo labeled **≈92%, not 100% certified**; gate M now distinguishes APK source commit `d6e0e29` from later doc commits; gate N marks secondary standalone tap-tests NOT TESTED with the environment-safety reason. `EXTERNAL_BLOCKERS.md` §3 rewritten: EAS authenticated (pavithran29), project linked, real APK produced — the stale "unauthenticated / no APK" text is gone. `ANDROID_DEVICE_QA.md`: NinniNest restoration verification, commit distinction, automation-stop record. |
+
+## Implemented and tested (Demo-APK preparation session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| Demo-build isolation flag (`8c9c025`) | `EXPO_PUBLIC_FORCE_DEMO=1` forces the fictional Mara/Theo demo flow unconditionally via a single gate in `isSupabaseConfigured()` — even if other `EXPO_PUBLIC_*` variables exist (e.g. inherited account-wide EAS variables), so a demo APK can never connect to a real Supabase backend. Production behavior unchanged when unset. 4 regression tests (`backend_src/tests/demo_flag.test.ts`): flag-wins over present production config, non-`'1'` values ignored, unset restores production. Registered as `test:demoflag` + CI. All PASS locally. |
+| CI scan false-positive fixed (`5eae22b`) | The new test fixture's dummy key assignment tripped the hardcoded-key scan; its pathspec now excludes `backend_src/tests` (aligned with the eyJ scan). Real JWT-shaped material in tests still caught; `.env` still fully checked. **CI 3/3 green at `5eae22b`.** |
+| EAS authentication | Still "Not logged in" (re-verified; no EXPO_TOKEN, no `~/.expo` session). A visible console window running `npx eas-cli login` was opened for the owner to enter credentials directly (credentials never pass through the agent). Build steps remain queued on this single owner action. |
+| Full local verification at `5eae22b` | expo-doctor 21/21 · `tsc --noEmit` 0 · `expo lint --max-warnings 0` clean · demo-flag + recovery suites PASS · migration replay 55/55 over 11 migrations. |
+
+## Implemented and tested (No-Supabase acceptance session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| Owner decision honored: all Supabase work DEFERRED | No login attempt, no migration, no project selection, no hosted changes. Implementation and all 11 migrations preserved unchanged. Readiness gates C/D/E reclassified DEFERRED in `FINAL_RELEASE_READINESS.md` (still earning no credit until executed). |
+| EAS authentication re-verified | `npx eas-cli whoami` → "Not logged in". EAS has no headless flow: the exact owner command is **`npx eas-cli login`** (interactive terminal). Post-login sequence documented step-by-step in `EXTERNAL_BLOCKERS.md` §3 (find/init project → replace zero placeholder → `eas env:create` → cloud build). |
+| App Links autoVerify removed (`79fbb80`) | `projecttwo.app` proven non-existent (DNS NXDOMAIN; HTTPS + assetlinks.json unresolvable). The autoVerify HTTPS intent filter was removed from `app.json`; the custom `projecttwo://` scheme (recovery path) preserved. expo-doctor 21/21, tsc 0, lint clean, export OK, **CI green**. |
+| Advisory remediation path validated as blocked | `decode-uri-component` installed version confirmed 0.2.2 (vulnerable `<=0.4.2`). The fixed 0.5.1 package was downloaded and inspected: it exports an **object**, while `query-string@7.1.3` requires a **direct function** — an override would break expo-router URL parsing at runtime (`d is not a function`). Override path concretely invalidated; remediation is the SDK 58 upgrade. `SECURITY_ACCEPTANCE.md` updated with the proof. |
+| Demo-mode visibility confirmed for the future APK | A build without Supabase env vars always runs demo mode, which self-identifies prominently: onboarding "Demonstration mode — accounts live only on this device." and Settings "Demonstration tour — Everything you see is a fictional world for Mara and Theo — no accounts, no real data." (`app/onboarding.tsx`, `app/(tabs)/settings.tsx`). No code change needed. |
+| Documentation | `ANDROID_RELEASE.md` App Links reference updated; `EXTERNAL_BLOCKERS.md` §2/§3 rewritten (DEFERRED + exact owner commands); `FINAL_RELEASE_READINESS.md` statuses updated with DEFERRED categories and unchanged ≈62% estimate. |
+
+## Implemented and tested (Acceptance-handoff session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| Dangerous setup guidance corrected (`1575b9e`) | `SUPABASE_SETUP.md` rewritten: the ordered migration series is the only schema source, the legacy monolithic `backend_src/0001_initial_schema.sql` is explicitly forbidden on hosted databases, CLI order fixed (`login` → `link` → `migration list` → `db push`), historical-project identity verification (six independent facts) takes priority over creating a new project, email confirmation stays ON with exact redirect URLs (`projecttwo://reset-password`), append-only adversarial check added. `ANDROID_RELEASE.md`: CNG workflow, deprecated `eas secret:create` replaced with current `eas env:create` environment tooling, disk warning, signing caveat. `README.md` backend section points at the series. |
+| Authentication handoff attempted, precisely recorded | `npx supabase projects list` → "Invalid access token" (stored CLI credential is expired). `npx supabase login` → **"Cannot use automatic login flow inside non-TTY environments"** — the browser flow requires an interactive terminal, so it is an owner-side action; no token was requested or accepted in chat. `npx eas-cli whoami` → "Not logged in"; interactive `eas login` likewise requires owner credentials in a terminal. Hosted phases remain BLOCKED with exact reasons; nothing was mutated. |
+| **App Links autoVerify declaration removed** (`79fbb80`) | `projecttwo.app` **does not exist** — DNS lookup returns "Non-existent domain" and both `https://projecttwo.app` and `/.well-known/assetlinks.json` fail to resolve. Shipping an autoVerify HTTPS intent filter for an unowned domain would be misleading; it was removed from `app.json` while the custom `projecttwo://` scheme is preserved (password-recovery path). Verified: expo-doctor 21/21, tsc 0, lint clean, web export OK, **CI green at `79fbb80`**. |
+| Advisory deep-dive | `decode-uri-component` installed version confirmed **0.2.2** (inside the vulnerable `<=0.4.2` range) via `expo-router` → `query-string`; runtime DoS-class only (malformed percent-encoded input), no patch within SDK 57; remediation = planned SDK 58 upgrade (or a validated override). Documented in `SECURITY_ACCEPTANCE.md`. |
+| PR #1 description refreshed | Now reflects the fully green CI status, the complete commit ledger, the ≈62% evidence-weighted readiness, and the three precise owner-side actions. |
+
+## Implemented and tested (CI-repair session, 2026-10-27)
+
+| Work | Evidence |
+| --- | --- |
+| **First fully green GitHub Actions run** | Run **40380810505** at `6f93274`: `verify` ✅ · `SQL migration + authorization on real Postgres` ✅ · `config-checks` ✅. The owner resolved the account billing restriction; two code fixes were still required (below). |
+| CNG workflow adopted (`e9ab64f`) | expo-doctor in run 40377948930 failed ("app config fields may not be synced in a non-CNG project": orientation, icon, userInterfaceStyle, scheme, ios, android, plugins vs the committed generated `android/` tree). The tree was pure prebuild output with no handcrafted changes, so `android/` was untracked (`git rm --cached`, local copy preserved outside the repo), `/android` + `/ios` gitignored — EAS uploads follow `.gitignore` when no `.easignore` exists, so EAS regenerates native config from `app.json` + plugins at build time. Stray local pnpm lockfiles removed (repo is npm-based). **Local expo-doctor: 21/21.** |
+| Latent secrets-step shell bug fixed (`6f93274`) | The "Fail on committed secrets" step had never actually executed (all earlier runs failed earlier). Once reached, its mis-constructed `["'"']` quote idiom left an unterminated single quote → "unexpected EOF" (exit 2). Pattern rewritten double-quoted with an escaped inner quote; verified locally (git grep exit 1 = clean, `bash -n` accepts, YAML parses). |
+| Documentation reconciled | `EXTERNAL_BLOCKERS.md`: billing blocker marked RESOLVED with the green run ID; APK claims corrected — **no installable APK exists** (gradle attempt aborted at 103 MB; Expo Go emulator runtime is the Android evidence). `FINAL_RELEASE_READINESS.md`: gate L → PASS with run ID; estimate recalculated to **≈62%** under the release-contract weights (BLOCKED requirements earn no credit). |
+| Full local verification at `6f93274` | expo-doctor 21/21 · `tsc --noEmit` 0 · `expo lint --max-warnings 0` clean · 4 test suites PASS · migration replay 55/55 over 11 migrations · `expo install --check` clean · web export OK · secret scans OK · workflow YAML parses. |
+
+## Implemented and tested (Release-hardening session, 2026-10-26)
+
+| Work | Evidence |
+| --- | --- |
+| Phase-One hardening of migration 0011 | `stamp_response_reveal()` moved into the private schema (not Data-API exposed), `search_path = ''` with fully qualified `pg_catalog`/`public`/`private` references; EXECUTE revoked from public/anon/authenticated; trigger re-pointed. New suite check asserts schema location, `has_function_privilege` revocation, restricted search_path in `proconfig`, and the trigger being enabled. **55/55 checks, 11/11 migrations, exit 0.** Commit `1ada7b6`. |
+| Recovery-link parser regression suite | Parser extracted to `services/recoveryLink.ts` (pure, no URLSearchParams dependency, never throws, never logs link contents). 11 checks: fragment tokens (implicit flow), query tokens, expired-link error params with `+` decoding, default copy, malformed percent-encoding, foreign-URL rejection, incomplete sets keep waiting, empty inputs, consumed links still parse for server-side rejection. Reset screen gained a 6s no-payload fallback so the "unsealing" state can never hang indefinitely (a present link owns the flow). Registered as `test:recovery` and in CI. **11/11 pass.** Commit `8f4fc60`. |
+| UI hardening | Safe-area insets on every screen + tab bar (replacing hardcoded 68/84pt); shared Button exposes accessibilityRole/Label/State; reduced motion follows the OS preference live unless the user overrides in Settings; dead history-row pressable removed; unreachable "A surprise waits" card removed; memory Edit fully wired (prefilled sheet → `updateMemory`) with YYYY-MM-DD validation. `tsc` 0 · `lint --max-warnings 0` clean · 4 suites PASS · 55/55. Commit `070bf1a`. |
+| Dependency security | `npm audit fix --package-lock-only`: 17 → 8 findings; critical `shell-quote` and high `ws`/`@xmldom/xmldom`/`picomatch` resolved. Remaining 8 are Expo SDK 57 toolchain advisories with no shipped-app runtime surface (npm's suggested fix is a major SDK downgrade) — recorded as accepted risk. Commit `64d7858`. |
+| Native prebuild committed | `android/` generated via `expo prebuild --platform android` (package `com.projecttwo.app`, adaptive icons, splash, scheme) and committed; build outputs and `local.properties` ignored. Commit `64d7858`. |
+| Android runtime QA on emulator | Full walkthrough with Expo Go 57.0.9 + Metro: splash → entry sequence → welcome → Letters tab → **cold-restart session restore** → Mara seals → Theo cannot see it → Theo seals → **reveal shows Mara's exact original text** → reaction row. Accessibility tree confirms Button/EditText/tab roles. No fatal logcat errors. Local `gradlew assembleDebug` aborted at 103 MB free disk (documented). Details + fidelity label: `docs/ANDROID_DEVICE_QA.md`. Screenshots in workspace `.qa/` (13 PNGs, referenced by name). |
+| Release evidence docs | `docs/FINAL_RELEASE_READINESS.md` (gate matrix with PASS/FAIL/BLOCKED/NOT TESTED + weighted estimate), `docs/SECURITY_ACCEPTANCE.md`, `docs/EXTERNAL_BLOCKERS.md`, `docs/ANDROID_DEVICE_QA.md`. Commit `64d7858` + this one. |
+
+## Implemented and tested (Hardening session, 2026-10-26 — answer finality + auth)
+
+| Work | Evidence |
+| --- | --- |
+| P0: answers are append-only end to end | Before: 0006 granted UPDATE (and an unused DELETE) on responses to authenticated; 0003's `responses_update` policy allowed the author to rewrite the body whenever `revealed_at` was null — and nothing ever stamped it, so the gate never closed; `SupabaseRepository.submitResponse` used `.upsert()`, silently overwriting the original. Migration `20261026120000_0011_responses_append_only` drops `responses_update`, revokes UPDATE/DELETE from authenticated, and stamps `revealed_at` server-side via an AFTER INSERT trigger. The SECURITY DEFINER trigger is justified and fenced: the inserting client holds no UPDATE privilege by design, so an invoker-rights trigger could not stamp; EXECUTE is revoked from public/anon/authenticated; it validates letter existence and couple membership internally; it touches only `revealed_at` while null; an xact-scoped advisory lock (the 0009 pattern) serializes the two concurrent first inserts; it runs inside the inserting transaction, so insert and stamp commit together. No client clock or client-provided reveal value is trusted. The client now inserts and maps SQLSTATE 23505 to "already sealed". DemoRepository mirrors first-write-wins plus the same stamping rule. Row visibility still uses the live `both_partners_answered` rule, so existing rows keep exactly their previous visibility. |
+| Adversarial finality suite | 19 new checks in `scripts/migrate-and-test.mjs` (54/54 total, exit 0), asserting affected rows and stored values explicitly, never bare `true`: exact stored body; pre-reveal blindness for partner B; 23505-specific resubmission rejection with byte-identical original and count=1; UPDATE body / revealed_at / DELETE denial at the privilege level; explicit `has_table_privilege` grant surface (select+insert only); both originals visible after both submit; identical non-null server-side stamps on both rows; post-reveal edit denial; third-account view/join/alter denial; spoofed `author_id` rejection; the stamping function is not client-callable; anon insert denial; the legacy backfill stamps completed pairs and leaves solo answers unstamped. |
+| Auth session hardening | `AppProvider` now subscribes to Supabase `onAuthStateChange` (SIGNED_OUT clears the UI session; SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED refresh it) — previously a sign-out or token revocation on another device left a dead session on screen. Password recovery can now complete on-device: `resetPasswordForEmail` redirects to `projecttwo://reset-password`, the new `app/reset-password.tsx` screen parses the URL-fragment tokens, exchanges them via `auth.setSession`, and sets the new password through the new adapter method `updatePassword` (demo is an honest no-op — the fictional world has no credential store). `RootGate` skips its redirects while the pathname is `/reset-password` so gating cannot yank the user away mid-recovery. `supabaseClient.ts` already persisted sessions correctly (AsyncStorage storage, autoRefreshToken, persistSession, detectSessionInUrl:false — no change needed). |
+
+## Implemented and tested (Completion session, 2026-10-26)
+
+| Work | Evidence |
+| --- | --- |
+| GitHub Actions zero-jobs failure root-caused and fixed | All 9 runs since the workflow existed failed in ~0s with zero jobs. Cause: the `Validate eas.json build profiles` step used a multi-line YAML plain scalar (`run: node -e "`) whose closing quote line was indented 8 spaces against 10-space continuation lines — a hard parse error (`deficient indentation`), so GitHub never created a job. Fixed in commit `b9d3d2f` by wrapping the script in a literal block scalar; validated with js-yaml (file parses: jobs verify/migration/config-checks, triggers push+pull_request). Empirically confirmed on PR #1: all three jobs are now created. |
+| Second CI blocker identified (external): account billing | With jobs now created, each fails in 1–4s with zero steps executed and the annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings." The same instant-failure signature appears on other private repos of this account. Resolves only via GitHub Settings → Billing & plans; not fixable from the repository. |
+| Production reactions fixed | The UI sent reaction kind `'spark'` but the hosted check constraint only allows ('heart','sparkle','smile','tear','hug') — every production reaction insert was rejected (the demo masked it). Renamed to `'sparkle'` in `domain/types.ts`, `components/ReactionRow.tsx`, `app/(tabs)/index.tsx`. Commit `2a1cb7c`. |
+| Weekly-adventure doodles persist their drawing summary | `submitDoodle` pushed the serialized drawing through parent state and submitted synchronously, so the parent closure sent the stale (usually empty) entry to `complete_adventure_part`. `onSubmit` now carries the finalized entry (`(entry?: string) => void`); the parent uses `entry ?? adventureEntry`; the shared submit button invokes `onSubmit()` without leaking the press event. Commit `2a1cb7c`. |
+| Invitation-code copy made real | The pairing button only flipped a local `copied` flag. It now copies via the Clipboard API on web and opens the share sheet on native (no new dependencies). Commit `2a1cb7c`. |
+| Demo mode reachable in production-configured builds | `AppProvider` pinned the adapter to Supabase whenever env vars existed, so "Enter the demo" signed into the DemoRepository while `refreshSession()` read Supabase — RootGate bounced back to onboarding and the demo was unreachable. The provider now tracks an explicit `demoActive` override (`enterDemo()`), exposes `production` separately from the active `backend`, and `refreshSession(adapter?)` can target an adapter explicitly. Commit `2a1cb7c`. |
+| Sign-in form establishes a provider session | `submitAuth` navigated to tabs after `signIn` without refreshing the provider session, leaving every screen with a null session. Fixed, and all real-auth calls now go through `production ?? backend` so a demo-active user signing in still hits Supabase. Commit `2a1cb7c`. |
+| Full local verification at pushed SHA `f5d6730` | `tsc --noEmit` → 0 errors (exit 0) · `expo lint --max-warnings 0` → clean (exit 0) · reveal_privacy_demo / preview_smoke / demo_tour → PASS · `node scripts/migrate-and-test.mjs` → ALL 10/10 migrations applied, HARDENING RESULTS 35/35 passed (exit 0) · `expo install --check` → dependencies up to date (exit 0) · `expo export --platform web` → exit 0 · CI secret checks (no committed .env, no `eyJ` key material, no hardcoded Supabase keys) → OK · eas.json profile validation → OK. |
+
+## Implemented and tested (Gate 2)
+
+| Four distinct adventure presentations (no fake doodle input) | New `components/AdventureStage.tsx`: gratitude_exchange renders paired envelopes ("From you" / partner), tiny_date renders a twilight picnic vignette (moon, stars, picnic scene), playful_question renders two speech bubbles (mine vs partner's sealed one), and doodle_prompt renders a REAL finger-drawing canvas — 6 ink colors, quadratic-smoothed strokes, undo/clear, "Seal the doodle" (serialized vector summary stored in the same entry string; DB contract unchanged). Home screen routes each kind through AdventureStage; the old generic TextInput is gone. Typecheck 0, lint --max-warnings 0 clean, all suites pass, 35/35 migration checks, web export OK. |
+| Premium auth screens | Signup/signin/reset forms now open with a WaxSeal–engraved divider–WaxSeal composition above the form title, matching the Midnight Postcards identity (previously bare inputs). Verified by typecheck/lint/export. |
+| Memory sheet polish | "Keep a moment" bottom sheet: grip bar, tap-outside to dismiss, stamp + editorial subtitle header, "Press into the book" submit label. Verified by typecheck/lint/export. |
+
+## Implemented and tested (Gate 1)
 
 | Work | Evidence |
 | --- | --- |
@@ -17,43 +119,82 @@ session, or states plainly that verification was not possible.
 | expo-doctor | 21/21 checks passed (earlier run this session). |
 | Web export | `expo export --platform web` → dist built successfully. |
 | CI workflow | Node 22.13 (SDK 57 requirement), blocking lint, migration job running the full schema + 19-check suite on real Postgres, secret check rewritten to detect actual key material (JWT-shaped `eyJ…` strings / hardcoded key assignments) instead of the `service_role` word, which false-positived on docs and SQL test fixtures. |
-| eas.json | Blank env values removed; profiles now reference EAS secret variables (`$EXPO_PUBLIC_SUPABASE_URL`, `$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`). |
+| eas.json (Gate 1 rewrite) | Uses Expo's documented environment selection: `"environment": "preview"` (APK profile) and `"environment": "production"` (AAB profile). The literal `"$EXPO_PUBLIC_*"` placeholder strings are gone. CI now fails the build if either environment key is missing or wrong (`Validate eas.json build profiles` step extended and verified locally). |
 
-| Weekly adventures (Phase C #3) | New table `weekly_adventures` + RLS (couple-scoped read, author-side write) + `get_this_weeks_adventure()` (idempotent, deterministic fair rotation across 4 kinds × 6 variants) + `complete_adventure_part()` (server-side author identification, 500-char limit) applied to the hosted DB and committed at `supabase/migrations/20261017154538_0008_weekly_adventures.sql`. App: `WeeklyAdventure` type, adapter methods, Supabase + Demo implementations, home-screen section with two-sided progress and entries. Typecheck 0, lint clean, all suites pass, migration suite 19/19. |
+| Duplicate migration reconciliation (Gate 1.1) | Hosted history verified via migration list: `20261017153604_0007` is the applied version; `20261017150000_0007` was never applied and was deleted from disk. Hosted series now: 0000, 0001, 0002, 0003, 0005, 0006, 0007, 0008, 0009, 0010 — no duplicates, no gaps. |
+
+| Weekly adventures RPC-only authorization (Gate 1.2) | Migration `0009_adventures_rpc_only` applied to the hosted DB: client INSERT/UPDATE policies dropped, `revoke insert, update, delete` + `grant select only` on `weekly_adventures`, `unique (couple_id, week_of)` backstop, `pg_advisory_xact_lock` serializing creation, `complete_adventure_part` as the sole write path with server-side side identification (caller's partner role resolved from `couples`, never trusted from the client). |
 
 | Lumi interactive gaze + press feedback | LanternSeed now looks toward touch (gaze offset with settle-back timer), keeps squish response, reduced-motion fallback preserved. Typecheck 0, lint clean. |
+
+| Partner B adventure bug fixed (Gate 1.3) | Home screen no longer assumes the viewer is Partner A. The viewer's side is resolved from the authorized couple record (`partnerAId === session.id`) in BOTH modes; mine/partner done flags, entries, and labels remap accordingly. Demo Mara/Theo perspective switching reloads data (load callback now depends on the session, which the provider updates on switch). Independent entries stay sealed until both sides are done, mirroring the letter reveal rule. Typecheck 0, lint clean. |
+
+| Migration test suite rewritten to the ordered series (Gate 1.5) | `node scripts/migrate-and-test.mjs` now replays ALL of supabase/migrations (0000 → 0010, 10 files) from an empty database — the monolithic `backend_src/0001_initial_schema.sql` is no longer the test path. Three identities (mara/theo/eve) drive 35 checks, including the signup trigger creating profiles server-side. Result: `MIGRATION: ALL 10/10 APPLIED CLEANLY` + `HARDENING RESULTS: 35/35 passed`. |
+
+| Adversarial adventure tests (Gate 1.2) | Proven by real DB responses, not assertions of true: direct INSERT permission-denied; partner A cannot forge `partner_b_done`; cannot write partner B's entry; cannot edit metadata (title); third user sees zero rows; cross-couple completion via RPC rejected; user without a couple cannot claim; >500-char entry rejected; duplicate (couple, week) insert hits the unique constraint; replay after both completed preserves flags and entries. All PASS. |
+
+| Two-person production path (Gate 3) | Exercised against the HOSTED database exactly as the app drives it — two fresh auth identities, trigger-created profiles, `create_my_invitation` → `join_couple_with_code`, both partners claiming `get_or_create_today_letter` and inserting responses under their own JWTs (own-row policy), reveal opening both responses, `get_this_weeks_adventure` + `complete_adventure_part` from both sides (both flags true, both entries intact, sides correctly attributed by the server), `get_couple_stats` returning the contract keys. All NOTICE checks passed; test users cascade-deleted afterward (verified zero remain). NOTE: this proves the database contract end-to-end under real roles/JWTs; it does not replace a live two-device app session (see untested list). |
 
 ## Implemented but untested
 
 - Hosted Auth end-to-end (real signup → confirmation email → login) — requires
   an Auth-enabled hosted session exercise; the trigger and client flow are in
-  place but no live account was created during this session.
+  place but no live account was created during this session. The recovery
+  deep-link completion (hardening session) additionally requires
+  `projecttwo://reset-password` to be allow-listed in the hosted Supabase Auth
+  redirect configuration — unverifiable from this environment.
 - Pocket-note production path against live Data API (table + policies exist;
   repository methods match; no live authenticated session exercised).
+- Supabase security advisors: not run — no Supabase access token exists in
+  this environment, and hosted configuration must not be touched from here.
+
+## Implemented and tested (Gate 4)
+
+| Android handoff configuration | `app.json`: adaptive icon with foreground + monochrome layers on midnight `#151D32`; splash with explicit dark variant on `#0E1526`; `projecttwo://` scheme plus `https://projecttwo.app` App Links intent filter (autoVerify); permissions limited to `POST_NOTIFICATIONS`; EAS `extra.projectId` placeholder documented in `docs/ANDROID_RELEASE.md` alongside the exact blocked commands (`eas login`, `eas secret:create`, `eas build -p android --profile preview` for the APK, local `gradlew assembleRelease` alternative needing SDK 36) and an 8-point on-device checklist. |
 
 ## Blocked by missing external access
 
-- GitHub Actions run verdict: we cannot trigger or observe runs in
-  `pavithran299/Couples` from this environment. The workflow is committed and
-  locally validated; the green verdict must come from a real run at the pushed
-  SHA. If the repository is private without Actions minutes, the run will not
-  execute — enable Actions/billing in repo settings.
-- Android APK/AAB: requires `eas login` on a signed-in machine.
-  Next executable step: `npx eas login && npx eas build -p android --profile preview`.
-  EAS secrets must be set first: `npx eas secret:create --name EXPO_PUBLIC_SUPABASE_URL --value <url>` (and the publishable key).
+- GitHub Actions green verdict: two independent blockers found. (1) The
+  workflow YAML defect — FIXED (see the completion session above; jobs are
+  now created). (2) Account Actions billing: jobs fail before any step runs
+  with "recent account payments have failed or your spending limit needs to
+  be increased" — resolves only in GitHub Settings → Billing & plans. Every
+  verification the run would perform already passes locally at the pushed
+  SHA `f5d6730` (see the completion session above). Once billing is fixed,
+  re-run PR #1's checks (e.g. `gh run rerun 40353624925`) or push.
+- Android APK/AAB: requires `eas login` on a signed-in machine — **blocked
+  here** (no EAS credentials in this environment; no build was produced).
+  Every configuration file is ready; `docs/ANDROID_RELEASE.md` holds the
+  exact commands (EAS APK path and the local `gradlew assembleRelease`
+  alternative) plus the on-device checklist.
+- `extra.eas.projectId` in `app.json` is a placeholder — `eas init` replaces
+  it with the real project ID the first time `eas login` + `eas init` run.
 
 ## Known defects
 
 - None open from the Phase A contract audit. Historical note: the hosted
   `get_couple_stats` returned `letters/memories/revealed` keys before
   migration 0007; any clients built before that point would have shown zeros.
+- FIXED during Gate 1: `hashtext()` returns a signed int4, so
+  `mod(hashtext(...), n)` could yield a negative index and adventure creation
+  crashed with a not-null violation on `kind` for some (couple, week) pairs.
+  Migration `0010_fix_adventure_hash_rotation` (applied to the hosted DB and
+  included in the replay series) wraps both hash uses in `abs()`. The test
+  suite caught this — proof the ordered replay earns its keep.
+- Supabase advisor `authenticated_security_definer_function_executable`
+  reports 10 WARN-level findings — every user-facing RPC is SECURITY DEFINER
+  and callable by `authenticated`. This is intentional (they are the app's
+  API surface and validate the caller internally); documented here so it is
+  not mistaken for an oversight. 22 `auth_rls_initplan` WARNs are initplan
+  cost hints (auth.uid() re-evaluation), INFO-level significance at this
+  scale.
 
 ## Next highest-value work
 
-1. Phase B premium UX pass (onboarding composition, home dashboard, tactile
-   letter flow, Lumi interactions).
-2. Phase C engagement: pocket surprises polish, weekly adventures, garden
-   progression.
-3. Phase D: adaptive icon/splash assets, permission audit, deep-link
-   confirmation/reset handling.
+1. Gate 2 premium UX pass (onboarding composition, home dashboard, tactile
+   letter flow, Lumi interactions, scrapbook memories, distinct adventure
+   presentations per kind).
+2. Gate 3: two-person production verification against the hosted backend.
+3. Gate 4: Android handoff (adaptive icon/splash, API 36, permissions,
+   deep links, EAS profiles).
 4. Live hosted E2E auth run.

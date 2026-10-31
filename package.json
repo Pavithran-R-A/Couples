@@ -9,11 +9,14 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor@latest",
-    "verify": "npm run typecheck && npm run test:privacy && npm run test:smoke && npm run test:tour",
+    "verify": "npm run typecheck && npm run test:privacy && npm run test:smoke && npm run test:tour && npm run test:recovery",
     "setup": "bash scripts/setup.sh",
     "test:privacy": "tsx backend_src/tests/reveal_privacy_demo.test.ts",
     "test:smoke": "tsx backend_src/tests/preview_smoke.test.ts",
-    "test:tour": "tsx backend_src/tests/demo_tour.test.ts"
+    "test:tour": "tsx backend_src/tests/demo_tour.test.ts",
+    "test:recovery": "tsx backend_src/tests/recovery_link.test.ts",
+    "test:demoflag": "tsx backend_src/tests/demo_flag.test.ts",
+    "test:buildconfig": "tsx backend_src/tests/build_config.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/cormorant-garamond": "^0.4.1",

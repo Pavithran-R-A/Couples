@@ -236,6 +236,11 @@ export class DemoRepository implements BackendAdapter {
     // Demo mode: nothing to reset, communicated in the UI.
   }
 
+  async updatePassword(_newPassword: string): Promise<void> {
+    // Demo mode: the fictional world has no credential store — sign-in
+    // accepts any password, so there is nothing to update.
+  }
+
   async getMyProfile(): Promise<Profile | null> {
     await this.load();
     if (!this.data.session) return null;
@@ -343,12 +348,22 @@ export class DemoRepository implements BackendAdapter {
     await this.load();
     const me = await this.getMyProfile();
     if (!me) throw new Error('Not signed in');
+    // Mirrors migration 0011: answers are append-only — the first answer is
+    // final and no later submission may overwrite it.
     const existing = this.data.responses.find((r) => r.letterId === letterId && r.authorId === me.id);
     if (existing) {
-      existing.body = body;
-    } else {
-      this.data.responses.push({ id: `resp-${Date.now()}`, letterId, authorId: me.id, body, createdAt: new Date().toISOString(), revealedAt: null });
-      this.data.milestones.push({ id: `ms-${Date.now()}`, coupleId: me.coupleId ?? '', kind: 'first_letter', achievedAt: new Date().toISOString(), label: 'First letter answered' });
+      throw new Error('You have already sealed your answer to this letter.');
+    }
+    const stampedAt = new Date().toISOString();
+    this.data.responses.push({ id: `resp-${Date.now()}`, letterId, authorId: me.id, body, createdAt: stampedAt, revealedAt: null });
+    this.data.milestones.push({ id: `ms-${Date.now()}`, coupleId: me.coupleId ?? '', kind: 'first_letter', achievedAt: stampedAt, label: 'First letter answered' });
+    // Same server-side rule as the 0011 trigger: the moment both partners
+    // have answered, both answers are stamped as revealed.
+    const pair = this.data.responses.filter((r) => r.letterId === letterId);
+    if (pair.length >= 2) {
+      for (const r of pair) {
+        if (!r.revealedAt) r.revealedAt = stampedAt;
+      }
     }
     await this.save();
   }

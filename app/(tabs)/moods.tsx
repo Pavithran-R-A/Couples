@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, Pressable, Modal } from 'react-native';
 import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { spacing, radii } from '@/theme/tokens';
 import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
@@ -16,6 +17,7 @@ const MOODS = ['☀️', '🌙', '🌿', '🔥', '☁️', '☕️'];
 export default function MoodsTab() {
   const { backend } = useApp();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [moods, setMoods] = useState<MoodCheckIn[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -29,10 +31,12 @@ export default function MoodsTab() {
   const [checkInNote, setCheckInNote] = useState('');
   const [checkInBusy, setCheckInBusy] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [memTitle, setMemTitle] = useState('');
   const [memNote, setMemNote] = useState('');
   const [memDate, setMemDate] = useState(new Date().toISOString().slice(0, 10));
   const [memBusy, setMemBusy] = useState(false);
+  const [memError, setMemError] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -76,13 +80,45 @@ export default function MoodsTab() {
     }
   };
 
-  const addMemory = async () => {
+  const openAddMemory = () => {
+    setEditingMemory(null);
+    setMemTitle('');
+    setMemNote('');
+    setMemDate(new Date().toISOString().slice(0, 10));
+    setMemError('');
+    setModalVisible(true);
+  };
+
+  const openEditMemory = (m: Memory) => {
+    setEditingMemory(m);
+    setMemTitle(m.title);
+    setMemNote(m.note);
+    setMemDate(m.memoryDate);
+    setMemError('');
+    setModalVisible(true);
+  };
+
+  const saveMemory = async () => {
     if (!memTitle.trim()) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(memDate.trim())) {
+      setMemError('The date needs the YYYY-MM-DD shape.');
+      return;
+    }
     setMemBusy(true);
+    setMemError('');
     try {
-      await backend.addMemory({ title: memTitle.trim(), note: memNote.trim(), photoUri: null, memoryDate: memDate });
+      if (editingMemory) {
+        await backend.updateMemory(editingMemory.id, {
+          title: memTitle.trim(),
+          note: memNote.trim(),
+          memoryDate: memDate.trim(),
+        });
+      } else {
+        await backend.addMemory({ title: memTitle.trim(), note: memNote.trim(), photoUri: null, memoryDate: memDate.trim() });
+      }
       setMemTitle('');
       setMemNote('');
+      setEditingMemory(null);
       setModalVisible(false);
       await load();
     } catch (e) {
@@ -99,6 +135,12 @@ export default function MoodsTab() {
     } catch {
       setError('Could not remove that memory');
     }
+  };
+
+  const closeMemoryModal = () => {
+    setEditingMemory(null);
+    setMemError('');
+    setModalVisible(false);
   };
 
   const sendNote = async () => {
@@ -127,7 +169,7 @@ export default function MoodsTab() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 28 }]}>
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.eyebrow, { color: theme.inkFaint }]}>Your shared world</Text>
@@ -272,18 +314,18 @@ export default function MoodsTab() {
               <Text style={[styles.scrapbookEmptyText, { color: theme.inkSoft, fontFamily: FONT_EDITORIAL, fontSize: 16 }]}>
                 Press a note, a photo or a date here — something worth returning to together.
               </Text>
-              <Button label="Keep a moment" onPress={() => setModalVisible(true)} theme={theme} style={{ marginTop: spacing.md }} />
+              <Button label="Keep a moment" onPress={openAddMemory} theme={theme} style={{ marginTop: spacing.md }} />
             </View>
           ) : (
             <>
-              <Pressable onPress={() => setModalVisible(true)} style={styles.addMemoryHit}>
+              <Pressable onPress={openAddMemory} style={styles.addMemoryHit}>
                 <Text style={[styles.addMemory, { color: theme.accent }]}>+ Keep a moment</Text>
               </Pressable>
               {memories.map((m, i) => (
                 <MemoryCard
                   key={m.id}
                   memory={m}
-                  onEdit={() => setModalVisible(true)}
+                  onEdit={() => openEditMemory(m)}
                   onDelete={() => removeMemory(m.id)}
                   theme={theme}
                   variant={(i % 2) as 0 | 1}
@@ -294,8 +336,20 @@ export default function MoodsTab() {
 
           <Modal visible={modalVisible} animationType="slide" transparent>
             <View style={[styles.modalBackdrop, { backgroundColor: theme.scrim }]}>
+              <Pressable style={styles.backdropDismiss} onPress={closeMemoryModal} accessibilityLabel="Close" />
               <View style={[styles.modalSheet, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.modalTitle, { color: theme.ink }]}>Keep a moment</Text>
+                <View style={[styles.sheetGrip, { backgroundColor: theme.line }]} />
+                <View style={styles.modalHeadRow}>
+                  <KeepsakeStamp size={34} glyph="flower" tone={theme.coral} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalTitle, { color: theme.ink }]}>
+                      {editingMemory ? 'Revisit a moment' : 'Keep a moment'}
+                    </Text>
+                    <Text style={[styles.modalSub, { color: theme.inkFaint, fontFamily: FONT_EDITORIAL, fontSize: 15 }]}>
+                      {editingMemory ? 'Gently retouched, pressed back into the book.' : 'Pressed into your shared scrapbook.'}
+                    </Text>
+                  </View>
+                </View>
                 <TextInput
                   value={memTitle}
                   onChangeText={setMemTitle}
@@ -325,12 +379,19 @@ export default function MoodsTab() {
                   style={[styles.titleInput, { backgroundColor: theme.surfaceSoft, borderColor: theme.line, color: theme.ink }]}
                   maxLength={10}
                 />
+                <ErrorNote theme={theme}>{memError}</ErrorNote>
                 <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg }}>
                   <View style={{ flex: 1 }}>
-                    <Button label="Save" onPress={addMemory} loading={memBusy} disabled={!memTitle.trim()} theme={theme} />
+                    <Button
+                      label={editingMemory ? 'Save the changes' : 'Press into the book'}
+                      onPress={saveMemory}
+                      loading={memBusy}
+                      disabled={!memTitle.trim()}
+                      theme={theme}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Button label="Cancel" variant="quiet" onPress={() => setModalVisible(false)} theme={theme} />
+                    <Button label="Cancel" variant="quiet" onPress={closeMemoryModal} theme={theme} />
                   </View>
                 </View>
               </View>
@@ -344,7 +405,7 @@ export default function MoodsTab() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 68, paddingBottom: 48 },
+  content: { padding: spacing.xl, paddingBottom: 48 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xl },
   eyebrow: {
@@ -400,6 +461,16 @@ const styles = StyleSheet.create({
   scrapbookEmptyTitle: { fontFamily: FONT_HEAD, fontSize: 18 },
   scrapbookEmptyText: { textAlign: 'center', lineHeight: 24, paddingHorizontal: spacing.sm },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end' },
+  backdropDismiss: { flex: 1 },
+  sheetGrip: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4.5,
+    borderRadius: 3,
+    marginBottom: spacing.md,
+  },
+  modalHeadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  modalSub: { lineHeight: 20 },
   modalSheet: {
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,

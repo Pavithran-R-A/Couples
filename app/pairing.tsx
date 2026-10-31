@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Platform, Share } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/providers/AppProvider';
 import { Card, SectionLabel, Button, ErrorNote, useTheme } from '@/theme/ui';
 import { spacing, radii } from '@/theme/tokens';
@@ -8,6 +9,7 @@ import { FONT_HEAD, FONT_BODY, FONT_BOLD, FONT_EDITORIAL } from '@/theme/fonts';
 import { EnvelopeArt, Constellation } from '@/components/Illustrations';
 
 export default function Pairing() {
+  const insets = useSafeAreaInsets();
   const { backend, refreshSession } = useApp();
   const th = useTheme();
   const router = useRouter();
@@ -55,17 +57,30 @@ export default function Pairing() {
     );
   };
 
-  const copyCode = () => {
+  const copyCode = async () => {
     if (!invitation) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    try {
+      if (Platform.OS === 'web') {
+        const clipboard = (
+          globalThis as { navigator?: { clipboard?: { writeText: (t: string) => Promise<void> } } }
+        ).navigator?.clipboard;
+        if (!clipboard) throw new Error('clipboard unavailable');
+        await clipboard.writeText(invitation.code);
+      } else {
+        await Share.share({ message: `Join me on Project Two — your invitation code: ${invitation.code}` });
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // The code stays on screen so it can be read out or typed by hand.
+    }
   };
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: th.bg }}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 44 }]} keyboardShouldPersistTaps="handled">
           <View style={styles.heroRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.eyebrow, { color: th.inkFaint }]}>Pairing</Text>
@@ -86,7 +101,7 @@ export default function Pairing() {
                 <>
                   <Text style={[styles.codeLabel, { color: th.inkSoft }]}>Share this code with your partner</Text>
                   <Text style={[styles.code, { color: th.accent }]}>{invitation.code}</Text>
-                  <Button label={copied ? 'Copied to your heart' : 'I shared it'} variant="quiet" onPress={copyCode} theme={th} />
+                  <Button label={copied ? 'Copied to your heart' : 'Copy the code'} variant="quiet" onPress={copyCode} theme={th} />
                   <Text style={[styles.expires, { color: th.inkFaint }]}>Valid for 7 days, single use only.</Text>
                 </>
               ) : (
@@ -121,7 +136,7 @@ export default function Pairing() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.xl, paddingTop: 84, paddingBottom: 64 },
+  content: { padding: spacing.xl, paddingBottom: 64 },
   heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   eyebrow: {
     fontSize: 12,

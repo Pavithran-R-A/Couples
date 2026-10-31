@@ -41,7 +41,7 @@ export interface LetterResponse {
   revealedAt: string | null; // set when both submitted
 }
 
-export type ReactionKind = 'heart' | 'smile' | 'spark';
+export type ReactionKind = 'heart' | 'smile' | 'sparkle';
 
 export interface Reaction {
   id: string;

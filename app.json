@@ -14,9 +14,12 @@
       "package": "com.projecttwo.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#F6F0E6"
+        "monochromeImage": "./assets/images/icon.png",
+        "backgroundColor": "#151D32"
       },
-      "permissions": ["POST_NOTIFICATIONS"]
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,14 +34,28 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/icon.png",
+          "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#F6F0E6"
+          "backgroundColor": "#151D32",
+          "dark": {
+            "image": "./assets/images/icon.png",
+            "imageWidth": 180,
+            "resizeMode": "contain",
+            "backgroundColor": "#0E1526"
+          }
         }
       ],
       "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0cf977e7-83df-4fb0-ba46-cb5c436a50ca"
+      }
+    },
+    "owner": "pavithran29"
   }
 }

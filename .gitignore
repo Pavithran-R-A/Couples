@@ -33,3 +33,19 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Local pnpm artifacts — this repo is npm-based (package-lock.json, CI npm ci)
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# Security scanner artifacts
+.mimosa/
+
+# CNG: native projects are generated via `npx expo prebuild` — app.json and
+# config plugins are the source of truth. EAS uploads follow .gitignore when
+# no .easignore exists, so EAS regenerates native config at build time.
+/android
+/ios
+
+# Local QA evidence (screenshots, PR comment drafts) — workspace-only
+/.qa

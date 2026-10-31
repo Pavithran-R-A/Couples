@@ -24,6 +24,7 @@ export interface BackendAdapter {
   signIn(email: string, password: string): Promise<AuthUser>;
   signOut(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
+  updatePassword(newPassword: string): Promise<void>;
 
   // Profiles / couple
   getMyProfile(): Promise<Profile | null>;

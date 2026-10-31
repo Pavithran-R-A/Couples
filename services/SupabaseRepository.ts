@@ -66,7 +66,35 @@ export class SupabaseRepository implements BackendAdapter {
   }
 
   async requestPasswordReset(email: string): Promise<void> {
-    const { error } = await this.client.auth.resetPasswordForEmail(email);
+    // The recovery link must land back in the app so a new password can be
+    // set on-device. Requires 'projecttwo://reset-password' to be allow-listed
+    // in the Supabase Auth redirect configuration.
+    const { error } = await this.client.auth.resetPasswordForEmail(email, {
+      redirectTo: 'projecttwo://reset-password',
+    });
+    if (error) throw error;
+  }
+
+  async updatePassword(newPassword: string): Promise<void> {
+    const { error } = await this.client.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  }
+
+  /** Subscribe to Supabase auth events; returns an unsubscribe function. */
+  onAuthStateChange(callback: (event: string) => void): () => void {
+    const { data } = this.client.auth.onAuthStateChange((event) => callback(event));
+    return () => data.subscription.unsubscribe();
+  }
+
+  /**
+   * Complete a password-recovery deep link: exchange the tokens delivered in
+   * the URL fragment for a session, after which updatePassword() may run.
+   */
+  async applyRecoveryTokens(accessToken: string, refreshToken: string): Promise<void> {
+    const { error } = await this.client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
     if (error) throw error;
   }
 
@@ -230,11 +258,18 @@ export class SupabaseRepository implements BackendAdapter {
   async submitResponse(letterId: string, body: string): Promise<void> {
     const session = await this.getSession();
     if (!session) throw new Error('Not signed in');
-    const { error } = await this.client.from('responses').upsert(
-      { letter_id: letterId, author_id: session.id, body },
-      { onConflict: 'letter_id,author_id' }
-    );
-    if (error) throw error;
+    // Answers are append-only (migration 0011): the first insert wins and
+    // the database rejects any later write. The unique (letter_id, author_id)
+    // constraint surfaces as 23505 when this author already sealed an answer.
+    const { error } = await this.client
+      .from('responses')
+      .insert({ letter_id: letterId, author_id: session.id, body });
+    if (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new Error('You have already sealed your answer to this letter.');
+      }
+      throw error;
+    }
   }
 
   async reactToResponse(responseId: string, kind: ReactionKind): Promise<void> {

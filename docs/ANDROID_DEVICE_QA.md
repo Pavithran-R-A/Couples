@@ -150,3 +150,89 @@ by name below):
   owner approval).
 - Reduced-motion OS toggle walkthrough, font-scale extremes, keyboard-viewport
   edge cases across more screens.
+
+---
+
+## Physical-device QA plan (PREPARED 2026-10-31 — NOT EXECUTED, awaiting owner approval)
+
+**Artifact under test (re-verified 2026-10-31):** `.qa/project-two-demo.apk`
+— SHA-256 `e3714d211e778e67ae5e91f9969ec52eb1ade28f1418da360f008fe776ee0be8`,
+package `com.projecttwo.app` v1.0.0 (versionCode 1), minSdk 24 (Android 7.0+),
+target 36, universal native-code (`arm64-v8a`, `armeabi-v7a`, `x86`,
+`x86_64`), signed by the EAS internal keystore (cert SHA-256
+`3760b91727b899a2c810fb0d7347d6be53806826358e903147a257e88f6467b0`).
+
+**Device status at preparation time:** the previously attached phone
+(serial `CIUWEMJBPBDUWC7D`) is **not currently connected** (`adb devices`
+empty). Compatibility against the actual hardware is therefore pending; the
+APK's universal ABI coverage plus minSdk 24 make any Android 7.0+ phone
+compatible by manifest.
+
+### Prepared read-only identification commands (no install, no settings change)
+
+```
+adb devices                                           # confirm the phone appears and is authorized
+adb -s <SERIAL> shell getprop ro.product.model        # model
+adb -s <SERIAL> shell getprop ro.build.version.release # Android version (needs >= 7.0)
+adb -s <SERIAL> shell getprop ro.build.version.sdk     # SDK level (needs >= 24)
+adb -s <SERIAL> shell getprop ro.product.cpu.abi       # ABI (arm64-v8a expected)
+adb -s <SERIAL> shell df /data                        # free storage for the ~126 MB APK + data
+adb -s <SERIAL> shell pm list packages com.projecttwo.app  # prior install check (read-only)
+```
+
+### Non-destructive install + test procedure (limited to com.projecttwo.app)
+
+1. `adb -s <SERIAL> install -r .qa/project-two-demo.apk` — installs/updates
+   **only** `com.projecttwo.app`; no other package is touched.
+2. Launch: `adb shell monkey -p com.projecttwo.app -c android.intent.category.LAUNCHER 1`.
+3. Before **every** automated interaction, assert
+   `dumpsys activity activities | grep topResumedActivity` contains
+   `com.projecttwo.app` — if any other package is foreground, **abort the
+   interaction** (no blind taps, learned from the shared-AVD incident).
+4. Prefer `uiautomator dump` accessibility-node bounds for taps over raw
+   coordinates.
+
+### Planned test matrix (all results recorded PASS/FAIL/NOT TESTED)
+
+- **Reactions:** tap each chip on the revealed letter; verify selected
+  state; navigate away and back; cold-restart; verify persistence.
+- **Memories:** create (title/note/date), edit text and date, invalid-date
+  rejection, delete (if supported), sorting, empty states.
+- **Moods:** check-in create, history, partner perspective, restart
+  persistence.
+- **Pocket notes:** send, partner read-state, restart persistence.
+- **Milestones:** verify creation/display after letters and memories.
+- **Lumi:** water/sunlight/play interactions, animation feedback, state
+  persistence across restart, reduced-motion behavior.
+- **Weekly adventures:** all four stage kinds from both partner
+  perspectives, independent completion, doodle drawing + serialization,
+  sealed-entry behavior, duplicate-submission behavior.
+- **Navigation:** tab switching, Android Back from every screen, keyboard
+  open/close, deep link `projecttwo://reset-password` handling.
+- **Accessibility:** screen-reader labels on primary controls (uiautomator
+  dump), touch-target sizes, large-font scaling, reduced-motion toggle.
+- **Reliability:** cold restart, background/resume, offline launch and
+  operation (airplane mode), rapid repeated taps on Seal, interrupted
+  actions, logcat scan for fatal exceptions after each phase.
+
+### Expected effect on the physical device (disclosed)
+
+- Installs one app, `com.projecttwo.app` (~126 MB APK, ~250–400 MB installed
+  footprint), signed by the EAS internal keystore.
+- Creates local app data under its own sandbox (demo-world records;
+  uninstall removes it entirely).
+- **No** other app is modified; **no** settings change; **no** Supabase
+  access (Supabase is DEFERRED — the build runs the fictional demo only,
+  enforced by the `EXPO_PUBLIC_FORCE_DEMO=1` preview environment).
+- Rollback (requires owner approval): `adb uninstall com.projecttwo.app` —
+  removes the app and all of its local data; nothing else on the device is
+  affected.
+- Evidence storage: screenshots pulled to the workspace `.qa/` folder
+  (~200–300 KB each; ~10–20 planned) — no meaningful disk impact on the
+  phone or C:.
+
+### Approval required before execution
+
+The owner must explicitly approve installing and testing on the physical
+phone. On approval, execution starts at the identification commands above
+and proceeds through the matrix with the foreground-guard protocol.

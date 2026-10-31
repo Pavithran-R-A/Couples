@@ -81,6 +81,50 @@ defect unless explicitly stated.
   requires and grows disk. Standalone tap-tests already executed remain
   valid (see `ANDROID_DEVICE_QA.md`); the rest are NOT TESTED.
 
+### 5b. Safe-recovery session (2026-10-31) and the approval-ready snapshot plan
+
+**Rechecked:** C: at 1.4 GB free; emulator fully stopped (0 qemu/emulator
+processes — nothing actively writing); AVD components unchanged (userdata
+5.5 GB, snapshots 4.1 GB, sdcard 512 MB, cache 197 MB).
+
+**Cleaned this session (explicitly disposable, verified by inspection):**
+
+| Path | Size | What it was |
+| --- | --- | --- |
+| `%TEMP%\DockerDesktopUpdates\Docker Desktop Updater-240920 (244584).exe` | 383 MB | Stale Docker Desktop updater download (re-downloadable) |
+| `%TEMP%\DiagOutputDir\RdClientAutoTrace` | 156 MB | Remote Desktop client diagnostic traces |
+| `%TEMP%irestick-phase4-temurin17-linux.tar.gz` | 193 MB | Downloaded JDK archive (re-downloadable) |
+| `%TEMP%
+ode-compile-cache`, `%TEMP%\metro-cache` | 155 MB | Node/Metro compile caches (regenerate automatically) |
+| npm cache (`%LOCALAPPDATA%
+pm-cache`) | ~330 MB | Package download cache (re-downloads on demand) |
+
+**Identified as NOT disposable and preserved:** `%TEMP%\opencode`
+(receiptlab live/qa/pgtest work directories — possibly a Postgres data dir),
+`%TEMP%c2review`, `%TEMP%\cutlyla-accept` (other in-flight project
+reviews), the AVD entirely, `.qa` evidence incl. the APK local copy,
+`node_modules`, `.gradle`.
+
+**Result: 1.4 GB → ~2.5 GB free.** The 8–10 GB target is **not achievable
+without touching the shared AVD** — so destructive operations stopped here.
+
+**Approval-ready snapshot plan (NOT executed — requires owner approval):**
+1. Close the emulator (already stopped).
+2. Delete `Pixel_10.avd/snapshots/` (4.1 GB) via the AVD Manager
+   ("Delete AVD snapshot") or by removing the `snapshots` directory — this
+   discards saved quick-boot restore points; the **userdata disk image
+   (5.5 GB) is a separate file and is not touched**, but app/data state
+   rollback points are lost and the next boot is a cold start.
+3. Optional companion: delete `cache.img.qcow2` (197 MB, rebuilt
+   automatically).
+4. Expected recovery: ~4.3 GB immediately (total ~6.8 GB free); combined
+   with the userdata image the AVD remains the largest consumer, so the
+   durable fix is an external/USB drive for `ANDROID_AVD_HOME` (no second
+   internal drive exists).
+**No zero-data-loss guarantee is offered:** deleting snapshots can lose
+snapshot-dependent state; only the userdata image preserves installed apps
+and their data.
+
 
 - **Observed:** C: dropped to 103 MB during the gradle attempt and sits
   around 1.9-2 GB free; the Pixel_10 AVD image alone is 7.5 GB.

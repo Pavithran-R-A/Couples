@@ -327,3 +327,32 @@ Other three adventure types rotate weekly and were **NOT TESTED on
 hardware** (deterministic by design; logic covered by the automated suites
 and the 55-check authorization matrix). Doodle drawing on hardware likewise
 NOT TESTED this cycle (type-gated).
+
+### Disposable memory creation + restart persistence on the POCO — 2026-10-31 (updated APK a48d385d)
+
+Executed on hardware with the updated binary:
+
+1. **Created** a disposable memory titled "QA memory" via "+ Keep a moment"
+   → the create sheet opened (title/note/date fields; date prefilled with
+   today) → typed the title → saved. The sheet **closed successfully** and
+   the new memory **appeared in the list** (verified in the UI-Automator
+   tree). Automation note: the modal's compact fields plus the MIUI keyboard
+   made scripted typing imperfect (two text injections interleaved); the
+   creation itself succeeded and the final stored title was verified in the
+   accessibility tree.
+2. **Persisted across force-stop + cold restart** — after relaunch the "QA
+   memory" entry was present in the Us list (a11y-tree verified; screenshot
+   `docs/qa/physical-persistence-restart.png` shows the restored app with
+   the Love reaction's persisted selected state visible from Theo's
+   perspective).
+3. **Remove control present** on the created card (hardware render) — the
+   deletion tap itself landed as a scroll in the long list and was **not
+   completed**: deletion on hardware is **NOT TESTED** (the removal flow is
+   covered by the DemoRepository logic and the automated suites).
+4. **Invalid-date rejection on hardware: NOT TESTED** — the validation is
+   suite-verified at the source level; the on-device modal sequence was
+   interrupted by the keyboard/layout shifts described above.
+
+Evidence artifacts (local, gitignored): `.qa/ui-new1..3.xml`,
+`ui-restart2/3.xml` (a11y trees), `.qa/phone-33-restart.png` (preserved copy
+in `docs/qa/physical-persistence-restart.png`).

@@ -236,3 +236,57 @@ adb -s <SERIAL> shell pm list packages com.projecttwo.app  # prior install check
 The owner must explicitly approve installing and testing on the physical
 phone. On approval, execution starts at the identification commands above
 and proceeds through the matrix with the foreground-guard protocol.
+
+---
+
+## Physical device acceptance (POCO M4 Pro 5G) — 2026-10-31
+
+**Owner-approved session on real hardware.** Device: Xiaomi POCO M4 Pro 5G
+(model 22031116AI, codename evergo), **Android 13 (SDK 33), arm64-v8a**,
+11 GB free on /data at install time, no prior Couples install.
+
+- **Install:** `adb -s CIUWEMJBPBDUWC7D install -r` of the SHA-256-verified
+  APK → **Success** (after enabling MIUI "Install via USB" + accepting the
+  on-device prompt — first attempts failed with
+  `INSTALL_FAILED_USER_RESTRICTED`, a Xiaomi security gate, not an APK
+  defect).
+- **Cold launch without Expo Go/Metro:** confirmed
+  (`topResumedActivity = com.projecttwo.app`); full entry sequence renders
+  on the 1080×2400 @ 440dpi screen with safe-area handling intact
+  (`.qa/phone-01-launch.png`).
+- **Demo journey on hardware:** Mara typed + sealed (read-only sealed view,
+  `.qa/phone-04-sealed.png`) → **Theo's view verified blind** via a11y scan
+  ("Popcorn" appears nowhere in his tree; `.qa/phone-05-theo-blind.png`) →
+  Theo sealed (`.qa/apk-10-reveal.png` equivalent: `.qa/phone-06-reveal.png`)
+  → **reveal shows Mara's byte-exact original** + reactions
+  (`.qa/phone-06-reveal.png`, `.qa/phone-08-mara-view.png` shows both
+  perspectives).
+- **Reaction persistence:** Love chip selected (visual coral state
+  verified); reaction visible from both perspectives and after restart.
+  A11y note: the reaction chips do not expose an a11y `selected` state
+  (labels only) — minor, recorded.
+- **Pocket note:** sent as Mara ("The coffee is alive.") — persisted in the
+  shared notes list (`.qa/phone-14-note-sent.png`).
+- **Mood chip:** selection state renders (☀️).
+- **Lumi:** care interaction "Give water" → **Warmth 42 → 46** verified via
+  the a11y tree; companion + "happy to see you" mood render
+  (`.qa/phone-10-lumi.png`, `.qa/phone-11-lumi-water.png`).
+- **Offline cold restart:** force-stop → airplane mode ON → relaunch →
+  fully functional, all state preserved, airplane icon visible in the
+  status bar (`.qa/phone-15-offline.png`). Network restored immediately
+  after.
+- **Stability:** 0 fatal exceptions, 0 ANRs in the phone logcat for the
+  whole session.
+- **Disclosed:** MIUI required the owner to enable "Install via USB" +
+  "USB debugging (Security settings)" (device security settings changed by
+  the owner, not by the agent). Two automation taps landed in NinniNest's
+  Settings through a stale system chooser on this shared device in the
+  earlier emulator session — on the PHYSICAL phone no such incident
+  occurred and NinniNest was never opened, modified, or stopped.
+
+### Physical-device NOT TESTED (honest)
+
+- Doodle drawing on hardware, Lumi sun/play taps, Us-tab memory editing on
+  hardware (emulator verification + automated suites cover the logic).
+- Font-scaling extremes, 3-button navigation, tablet layouts.
+- Any production-backend behavior (Supabase DEFERRED).

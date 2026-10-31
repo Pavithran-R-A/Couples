@@ -4,6 +4,14 @@ Last updated: 2026-10-29 (final standalone QA + reconciliation session). Each
 item lists real verification performed in this session, or states plainly
 that verification was not possible.
 
+## Implemented and tested (Physical-device acceptance session, 2026-10-31)
+
+| Work | Evidence |
+| --- | --- |
+| **Physical-device acceptance on the owner's POCO M4 Pro 5G** | Xiaomi POCO M4 Pro 5G (22031116AI), Android 13 (SDK 33), arm64-v8a, 11 GB free. The SHA-256-verified demo APK installed via adb (after the owner enabled MIUI "Install via USB" — first attempts failed with `INSTALL_FAILED_USER_RESTRICTED`, a Xiaomi gate, disclosed). Cold launch without Expo Go/Metro; full two-person demo journey on hardware: Mara seal (read-only) → Theo pre-reveal blindness (a11y-scan verified) → Theo seal → byte-exact reveal → Love reaction persisted across perspectives → pocket note sent → Lumi "Give water" Warmth 42→46 → **offline (airplane mode) cold restart preserves everything** → 0 fatal exceptions/ANRs. Screenshots `.qa/phone-*.png`; three committed in `docs/qa/`. |
+| EAS project linked; demo-isolated preview build produced | `@pavithran29/project-two` (ID `0cf977e7-83df-4fb0-ba46-cb5c436a50ca`); preview env = exactly `EXPO_PUBLIC_FORCE_DEMO=1`; build `c4891307-9f4d-4af4-bf5e-29b15f801b18` (source `d6e0e29`) finished; artifact SHA-256 `e3714d21…776ee0be8`, 131,841,274 bytes, signed (cert `3760b917…6467b0`). |
+| Evidence reconciliation | `FINAL_RELEASE_READINESS.md` table total corrected 62% → 71.25% (credit sum); `EXTERNAL_BLOCKERS.md` §3 rewritten to the resolved EAS state and §5 rewritten with the disk diagnostics + approval-ready snapshot plan (4.1 GB snapshots — NOT executed without approval). |
+
 ## Implemented and tested (Final QA + reconciliation session, 2026-10-29)
 
 | Work | Evidence |

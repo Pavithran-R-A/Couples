@@ -290,3 +290,19 @@ and proceeds through the matrix with the foreground-guard protocol.
   hardware (emulator verification + automated suites cover the logic).
 - Font-scaling extremes, 3-button navigation, tablet layouts.
 - Any production-backend behavior (Supabase DEFERRED).
+
+### A11y re-verification on the updated APK (build a48d385d, commit 5079be9) — 2026-10-31
+
+The a11y-fix build (SHA-256 b71ea488ed3bc37430337c12ca32236841b2f147f0506619186feac355f55195)
+installed on the POCO after the owner accepted the MIUI prompt (the first
+retry failed with INSTALL_FAILED_USER_RESTRICTED again; lastUpdateTime
+moved 14:40:34 -> 17:01:28, proving the update). Reaction a11y states,
+read from the UI-Automator tree of the updated binary:
+
+- Tap Love: Love=true, Warm=false, Spark=false (selected reaches screen readers)
+- Tap Warm: Love=false, Warm=true, Spark=false (single-selection semantics)
+- Force-stop + cold restart: Warm=true persists
+- Restore Love: Love=true, Warm=false, Spark=false
+
+PerspectiveSwitcher pills already exposed selected states (verified in the
+same dumps). All a11y re-tests PASS on hardware.

@@ -41,7 +41,7 @@ no credit for that requirement; verified subrequirements retain theirs.
 | Documentation and reproducibility | 5% | 4.75 | Five evidence documents reconciled with artifacts; every claim traceable to commands/run IDs. |
 | **Total** | **100%** | **72.25%** | |
 
-**Overall: 72.25% of verified consumer-release readiness** (category credits above sum exactly to 72.25; earlier drafts quoted 62% before the APK milestone and ~70% before the final reconciliation — this figure is the authoritative sum). The **Android demonstration release itself is ≈92%** (build/artifact/install/core journeys/offline all PASS; the remainder is secondary standalone tap-tests NOT TESTED for environment-safety reasons, plus physical device) and is **not certified 100%**. Supabase remains DEFERRED, so full customer readiness stays below 100% by construction. Per the owner's
+**Overall: 72.25% of verified consumer-release readiness** (category credits above sum exactly to 72.25; earlier drafts quoted 62% before the APK milestone and ~70% before the final reconciliation — this figure is the authoritative sum). The **Android demonstration release itself is ≈96%** (build/artifact/install, core journeys, offline cold-restart and the physical POCO acceptance all PASS — see `ANDROID_DEVICE_QA.md`; the remainder is secondary standalone tap-tests NOT TESTED for environment-safety reasons) and is **not certified 100%**. Supabase remains DEFERRED, so full customer readiness stays below 100% by construction. Per the owner's
 2026-10-27 decision, all Supabase work is **DEFERRED** to a future mission
 (the hosted-auth/two-partner category is deferred, not forgotten — it still
 earns no credit until executed). The immediately actionable path to more

@@ -306,3 +306,24 @@ read from the UI-Automator tree of the updated binary:
 
 PerspectiveSwitcher pills already exposed selected states (verified in the
 same dumps). All a11y re-tests PASS on hardware.
+
+### Weekly adventure (tiny_date) completed on hardware — 2026-10-31 (later session)
+
+The current week's deterministic adventure type (tiny_date — "Dessert first
+tonight") was completed from BOTH partner perspectives on the physical POCO:
+
+1. **Mara's side** was already kept ("YOUR PART, KEPT — Strawberries and
+   cream, eaten before the pasta water even boiled.").
+2. **Switched to Theo** (PerspectiveSwitcher): his side rendered with an
+   open entry field and an enabled "Mark it done" (a11y bounds from the
+   UI-Automator dump; no blind taps).
+3. **Theo typed and sealed** — "YOUR PART, KEPT / Dessert first, rules
+   second." persisted; the state advanced to **"Done together"**.
+4. Letters history simultaneously showed five consecutive days of
+   "Revealed" letters — the demo world persisted across days on the device.
+
+Screenshot: `docs/qa/physical-adv-done.png` (sanitized — demo UI only).
+Other three adventure types rotate weekly and were **NOT TESTED on
+hardware** (deterministic by design; logic covered by the automated suites
+and the 55-check authorization matrix). Doodle drawing on hardware likewise
+NOT TESTED this cycle (type-gated).

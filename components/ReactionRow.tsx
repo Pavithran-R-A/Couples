@@ -34,7 +34,9 @@ export function ReactionRow({
               },
               pressed && { transform: [{ scale: 0.94 }] },
             ]}
+            accessibilityRole="button"
             accessibilityLabel={`React with ${r.label}`}
+            accessibilityState={{ selected: active }}
           >
             <Text style={[styles.glyph, { color: active ? theme.coral : theme.inkSoft }]}>{r.glyph}</Text>
             <Text style={[styles.label, { color: active ? theme.coral : theme.inkSoft }, active && { fontFamily: FONT_BOLD }]}>

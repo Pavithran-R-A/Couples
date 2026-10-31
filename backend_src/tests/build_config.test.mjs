@@ -48,6 +48,13 @@ check(
     clientSrc.includes('return false;')
 );
 
+const reactionSrc = readFileSync(join(root, 'components', 'ReactionRow.tsx'), 'utf8');
+check(
+  'reaction chips expose button role and selected state to screen readers',
+  reactionSrc.includes('accessibilityRole="button"') &&
+    reactionSrc.includes("accessibilityState={{ selected: active }}")
+);
+
 check(
   'eas projectId placeholder present until the owner links the project',
   typeof appJson.extra?.eas?.projectId === 'string'

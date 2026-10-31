@@ -59,6 +59,37 @@ defect unless explicitly stated.
   the domain, the App Links filter can be reinstated together with a
   `/.well-known/assetlinks.json` carrying the real signing fingerprint.
 
+## 5. Local disk exhaustion
+
+### 5c. Root cause of the fluctuation — Docker Desktop/WSL (identified and stabilized, 2026-10-31)
+
+- **Active writer found:** `vmmemWSL` (the Docker Desktop WSL VM) was running
+  and continuously growing the sparse `docker_data.vhdx` — **31 GB allocated**,
+  the single largest consumer on C: (larger than the 11 GB AVD).
+- **Stabilization executed (reversible):** Docker Desktop processes stopped,
+  `wsl --shutdown` run, and the Gradle build caches grown during the aborted
+  local build (`.gradle/caches`, ~365 MB) removed. The writer is halted;
+  free space stabilized at ~0.5–0.7 GB with only NTFS journal noise. No
+  Docker data was deleted — images, containers and volumes are intact; the
+  vhdx keeps its allocated size until compacted.
+- **Reclaim candidates, ordered by size/safety (owner decisions):**
+  1. `docker_data.vhdx` (31 GB): with Docker restarted once,
+     `docker system prune -a --volumes` (owner data decision) followed by a
+     vhdx **compaction** (Docker Desktop settings or `Optimize-VHD`) can
+     recover likely **10–20+ GB**. Largest single lever.
+  2. Pixel_10 AVD **snapshots** (4.1 GB): data-preserving deletion plan in
+     §5b — alters quick-boot state only.
+  3. `%TEMP%\opencode` (1.1 GB): ReceiptLab work dirs — owner confirmation
+     needed that they are disposable.
+  4. `%TEMP%c2review` + `cutlyla-accept` (246 MB): other project review
+     artifacts — owner confirmation needed.
+- **Stabilization ledger (all regenerable, verified):** npm cache (~445 MB,
+  twice), Docker updater payload (383 MB), DiagOutput traces (156 MB), JDK
+  tarball (193 MB), node/metro compile caches (155 MB), gradle build caches
+  (~365 MB grown during the aborted local build), stale installer payloads —
+  total ~1.7 GB reclaimed across the two emergency sessions. None of it
+  affected any project's source, data or the Couples artifact.
+
 ## 5. Local disk exhaustion — OWNER ACTION REQUIRED (2026-10-30)
 
 - **C: free space reached 0 GB.** Read-only diagnostics identified where the
@@ -101,7 +132,8 @@ pm-cache`) | ~330 MB | Package download cache (re-downloads on demand) |
 
 **Identified as NOT disposable and preserved:** `%TEMP%\opencode`
 (receiptlab live/qa/pgtest work directories — possibly a Postgres data dir),
-`%TEMP%c2review`, `%TEMP%\cutlyla-accept` (other in-flight project
+`%TEMP%
+c2review`, `%TEMP%\cutlyla-accept` (other in-flight project
 reviews), the AVD entirely, `.qa` evidence incl. the APK local copy,
 `node_modules`, `.gradle`.
 

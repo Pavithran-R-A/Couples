@@ -39,9 +39,9 @@ no credit for that requirement; verified subrequirements retain theirs.
 | Mobile UX, accessibility and reliability | 10% | 6.0 | Emulator walkthrough with screenshots, a11y tree verified, safe-area/motion fixes; limited screen/mode coverage (one emulator, demo mode). |
 | GitHub CI and release engineering | 10% | 9.5 | First fully green 3/3 run (40380810505 @ `6f93274`) at the exact pushed commit; PR evidence current. |
 | Documentation and reproducibility | 5% | 4.75 | Five evidence documents reconciled with artifacts; every claim traceable to commands/run IDs. |
-| **Total** | **100%** | **71.25%** | |
+| **Total** | **100%** | **72.25%** | |
 
-**Overall: 71.25% of verified consumer-release readiness** (category credits above sum exactly to 71.25; earlier drafts quoted 62% before the APK milestone and ~70% before the final reconciliation — this figure is the authoritative sum). The **Android demonstration release itself is ≈92%** (build/artifact/install/core journeys/offline all PASS; the remainder is secondary standalone tap-tests NOT TESTED for environment-safety reasons, plus physical device) and is **not certified 100%**. Supabase remains DEFERRED, so full customer readiness stays below 100% by construction. Per the owner's
+**Overall: 72.25% of verified consumer-release readiness** (category credits above sum exactly to 72.25; earlier drafts quoted 62% before the APK milestone and ~70% before the final reconciliation — this figure is the authoritative sum). The **Android demonstration release itself is ≈92%** (build/artifact/install/core journeys/offline all PASS; the remainder is secondary standalone tap-tests NOT TESTED for environment-safety reasons, plus physical device) and is **not certified 100%**. Supabase remains DEFERRED, so full customer readiness stays below 100% by construction. Per the owner's
 2026-10-27 decision, all Supabase work is **DEFERRED** to a future mission
 (the hosted-auth/two-partner category is deferred, not forgotten — it still
 earns no credit until executed). The immediately actionable path to more

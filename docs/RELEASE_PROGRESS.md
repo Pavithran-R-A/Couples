@@ -12,6 +12,12 @@ that verification was not possible.
 | EAS project linked; demo-isolated preview build produced | `@pavithran29/project-two` (ID `0cf977e7-83df-4fb0-ba46-cb5c436a50ca`); preview env = exactly `EXPO_PUBLIC_FORCE_DEMO=1`; build `c4891307-9f4d-4af4-bf5e-29b15f801b18` (source `d6e0e29`) finished; artifact SHA-256 `e3714d21…776ee0be8`, 131,841,274 bytes, signed (cert `3760b917…6467b0`). |
 | Evidence reconciliation | `FINAL_RELEASE_READINESS.md` table total corrected 62% → 71.25% (credit sum); `EXTERNAL_BLOCKERS.md` §3 rewritten to the resolved EAS state and §5 rewritten with the disk diagnostics + approval-ready snapshot plan (4.1 GB snapshots — NOT executed without approval). |
 
+## Final session addendum (2026-10-31 — storage-limited)
+
+- **Weekly adventure completion as Theo (hardware): NOT TESTED — suspended by the storage emergency.** C: fell to 750 MB (below the 2 GB reserve) during the attempt; the already-captured standalone evidence (core journeys, offline restart, settings) stands. The three non-current adventure types remain covered by the automated suites and the 55-check migration authorization matrix, not by hardware taps.
+- `FINAL_RELEASE_READINESS.md` total corrected to the exact credit sum **72.25%**.
+- Physical-device evidence preserved: `docs/qa/standalone-*.png`, `.qa/phone-*.png` (13 device screenshots).
+
 ## Implemented and tested (Final QA + reconciliation session, 2026-10-29)
 
 | Work | Evidence |

@@ -12,7 +12,11 @@ import {
 async function ensurePet(coupleId) {
   const rows = await listRowsWhere('pet_states', [['equal', 'couple_id', coupleId]], 1);
   if (rows.length) return rows[0];
-  const c = await createRow('pet_states', 'unique()', { couple_id: coupleId, affection: 40, mood: 'happy to see you', created_at: now() });
+  // pet_states has no created_at column in the reviewed contract; the
+  // interaction timestamps live in last_interaction_at/last_watered_at/
+  // last_sunlit_at.
+  const c = await createRow('pet_states', 'unique()', { couple_id: coupleId, affection: 40, mood: 'happy to see you' });
+  if (c.status >= 400) throw new Error(`pet create failed: HTTP ${c.status}`);
   return c.data;
 }
 
@@ -27,10 +31,11 @@ export const handlers = {
     if (!['water', 'sunlight', 'play'].includes(action)) return fail(res, 400, 'Unknown care action.');
     const pet = await ensurePet(couple.$id);
     const stamp = now();
-    const patch = { affection: Math.min(WARMTH_MAX, Number(pet.affection) + WARMTH_STEP), mood: 'cared' };
+    const patch = { affection: Math.min(WARMTH_MAX, Number(pet.affection) + WARMTH_STEP), mood: 'cared', last_interaction_at: stamp };
     if (action === 'water') patch.last_watered_at = stamp;
     if (action === 'sunlight') patch.last_sunlit_at = stamp;
     const upd = await updateRow('pet_states', pet.$id, patch);
+    if (upd.status >= 400) return fail(res, 500, 'The care could not be saved.');
     return res.json({ ok: true, data: { pet: upd.data } });
   },
 
@@ -49,6 +54,7 @@ export const handlers = {
       return fail(res, 400, 'The date needs the YYYY-MM-DD shape.');
     }
     const created = await createRow('memories', 'unique()', { couple_id: couple.$id, author_id: user.id, title, note, memory_date: memoryDate, created_at: now() });
+    if (created.status >= 400) return fail(res, 500, 'The memory could not be saved.');
     return res.json({ ok: true, data: { memory: created.data } });
   },
 
@@ -68,6 +74,7 @@ export const handlers = {
       patch.memory_date = String(body.memory_date);
     }
     const upd = await updateRow('memories', id, patch);
+    if (upd.status >= 400) return fail(res, 500, 'The memory could not be saved.');
     return res.json({ ok: true, data: { memory: upd.data } });
   },
 
@@ -79,7 +86,8 @@ export const handlers = {
     if (current.status >= 400) return res.json({ ok: true, data: { gone: true } });
     const couple = await getCouple(user.id);
     if (!couple || current.data.couple_id !== couple.$id) return fail(res, 403, 'Not your memory.');
-    await deleteRow('memories', id);
+    const out = await deleteRow('memories', id);
+    if (out.status >= 400 && out.status !== 404) return fail(res, 500, 'The memory could not be removed.');
     return res.json({ ok: true, data: { gone: true } });
   },
 
@@ -88,6 +96,7 @@ export const handlers = {
     const note = String(body.note || '').trim().slice(0, 500);
     if (!emoji) return fail(res, 400, 'Pick a mood first.');
     const created = await createRow('mood_check_ins', 'unique()', { couple_id: couple.$id, author_id: user.id, emoji, note, created_at: now() });
+    if (created.status >= 400) return fail(res, 500, 'The mood could not be saved.');
     return res.json({ ok: true, data: { checkIn: created.data } });
   },
 
@@ -100,6 +109,7 @@ export const handlers = {
     const text = String(body.body || '').trim().slice(0, 500);
     if (!text) return fail(res, 400, 'Write something first.');
     const created = await createRow('pocket_notes', 'unique()', { couple_id: couple.$id, author_id: user.id, body: text, created_at: now() });
+    if (created.status >= 400) return fail(res, 500, 'The note could not be saved.');
     return res.json({ ok: true, data: { note: created.data } });
   },
 
@@ -174,6 +184,7 @@ export const handlers = {
     const prior = await listRowsWhere('adventure_parts', [['equal', 'adventure_id', adventureId], ['equal', 'author_id', user.id]], 1);
     if (prior.length) return res.json({ ok: true, data: { alreadyKept: true, part: prior[0] } });
     const created = await createRow('adventure_parts', 'unique()', { adventure_id: adventureId, author_id: user.id, entry, created_at: now() });
+    if (created.status >= 400) return fail(res, 500, 'Your part could not be kept.');
     return res.json({ ok: true, data: { alreadyKept: false, part: created.data } });
   },
 

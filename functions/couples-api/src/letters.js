@@ -117,9 +117,11 @@ export const handlers = {
     if (existing.length && existing[0].kind === kind) return res.json({ ok: true, data: { reaction: existing[0] } });
     if (existing.length) {
       const upd = await updateRow('reactions', existing[0].$id, { kind });
+      if (upd.status >= 400) return fail(res, 500, 'The reaction could not be saved.');
       return res.json({ ok: true, data: upd.data });
     }
     const created = await createRow('reactions', 'unique()', { response_id: responseId, author_id: user.id, kind, created_at: now() });
+    if (created.status >= 400) return fail(res, 500, 'The reaction could not be saved.');
     return res.json({ ok: true, data: created.data });
   },
 };

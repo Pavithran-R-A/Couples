@@ -6,11 +6,17 @@
 // No network access; node:test runner.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 process.env.APPWRITE_ENDPOINT = 'https://sgp.cloud.appwrite.io/v1';
 process.env.APPWRITE_API_KEY = 'test-server-key';
 process.env.APPWRITE_FUNCTION_PROJECT_ID = 'test-project';
 process.env.APPWRITE_CODE_PEPPER = 'test-pepper-0123456789abcdef';
+
+// The mock validates every write payload against the REVIEWED schema
+// contract, so a payload Appwrite would reject can never pass silently.
+const CONTRACT = JSON.parse(readFileSync(new URL('../../../appwrite/schema.contract.json', import.meta.url), 'utf8'));
+const CONTRACT_TABLES = new Map(CONTRACT.tables.map((t) => [t.table_id, t]));
 
 // ---- In-memory Appwrite TablesDB REST simulation ---------------------------
 
@@ -32,9 +38,62 @@ let txSeq = 0;
 let forceCommitFailure = false;
 let failStagedCreateFor = null;
 let failDeleteFor = null;
+let failCreateFor = null;
+let failPatchFor = null;
 let throwOnStagedPatch = false;
 let failRollback = false;
 const now = () => new Date().toISOString();
+
+// Strict schema validation: unknown columns, missing required fields, nulls
+// in required columns, wrong types, varchar size overflows. Returns an error
+// string or null. Rows are validated as Appwrite would validate them.
+function validatePayload(tableId, data, { isCreate = false } = {}) {
+  const t = CONTRACT_TABLES.get(tableId);
+  if (!t) return `unknown table ${tableId}`;
+  for (const [k, v] of Object.entries(data)) {
+    if (k === '$id') continue;
+    const col = t.columns.find((c) => c.key === k);
+    if (!col) return `unknown column ${tableId}.${k}`;
+    if (v === null || v === undefined) {
+      if (col.required && v === null) return `null in required column ${tableId}.${k}`;
+      continue;
+    }
+    if (col.type === 'varchar' || col.type === 'text') {
+      if (typeof v !== 'string') return `column ${tableId}.${k} expects a string`;
+      if (col.type === 'varchar' && col.size && v.length > col.size) return `column ${tableId}.${k} exceeds varchar size ${col.size}`;
+    } else if (col.type === 'datetime') {
+      if (typeof v !== 'string' || Number.isNaN(Date.parse(v))) return `column ${tableId}.${k} expects an ISO datetime`;
+    } else if (col.type === 'integer' || col.type === 'bigint') {
+      if (!Number.isInteger(Number(v))) return `column ${tableId}.${k} expects an integer`;
+    } else if (col.type === 'boolean') {
+      if (typeof v !== 'boolean') return `column ${tableId}.${k} expects a boolean`;
+    } else if (col.type === 'float') {
+      if (Number.isNaN(Number(v))) return `column ${tableId}.${k} expects a float`;
+    }
+  }
+  if (isCreate) {
+    for (const c of t.columns) {
+      if (c.required && (data[c.key] === undefined || data[c.key] === null)) return `missing required column ${tableId}.${c.key}`;
+    }
+  }
+  return null;
+}
+
+// Unique-index conflicts emulate SQL semantics: NULLs never conflict, and
+// updates exclude their own row.
+function findUniqueConflict(tableId, data, excludeRowId) {
+  const t = CONTRACT_TABLES.get(tableId);
+  if (!t) return null;
+  for (const idx of t.indexes ?? []) {
+    if (idx.type !== 'unique') continue;
+    const attrs = idx.attributes ?? [];
+    const vals = attrs.map((a) => data[a]);
+    if (vals.some((v) => v === undefined || v === null)) continue;
+    const clash = [...tbl(tableId).values()].find((r) => r.$id !== excludeRowId && attrs.every((a) => String(r[a]) === String(data[a])));
+    if (clash) return `${idx.key} (${attrs.join(',')})`;
+  }
+  return null;
+}
 
 function tbl(t) { if (!tables.has(t)) tables.set(t, new Map()); return tables.get(t); }
 function genId() { return `row-${Math.random().toString(36).slice(2, 10)}`; }
@@ -112,12 +171,28 @@ function fakeAppwrite(method, url, parsedBody, headers) {
     if (parsedBody && parsedBody.commit) {
       if (forceCommitFailure) return jsonResponse(500, { error: 'commit failed' });
       openTxns.delete(txnRoute[1]);
-      // Atomicity: validate every staged operation before applying any, so a
+      // Atomicity: validate EVERY staged operation (schema shape, required
+      // columns, unique indexes, row existence) before applying any, so a
       // conflict fails the whole commit without partial application.
       for (const op of ops) {
         const t = tbl(op.tableId);
-        if (op.action === 'create' && t.has(op.rowId)) return jsonResponse(409, { error: 'duplicate' });
-        if (op.action === 'update' && !t.has(op.rowId)) return jsonResponse(404, { error: 'row missing' });
+        if (op.action === 'create') {
+          const err = validatePayload(op.tableId, op.data ?? {}, { isCreate: true });
+          if (err) return jsonResponse(400, { error: err });
+          const conflict = findUniqueConflict(op.tableId, op.data ?? {}, null);
+          if (conflict) return jsonResponse(409, { error: `unique constraint: ${conflict}` });
+          if (t.has(op.rowId)) return jsonResponse(409, { error: 'duplicate' });
+        }
+        if (op.action === 'update') {
+          const cur = t.get(op.rowId);
+          if (!cur) return jsonResponse(404, { error: 'row missing' });
+          const merged = { ...cur, ...(op.data ?? {}) };
+          const err = validatePayload(op.tableId, merged, { isCreate: false });
+          if (err) return jsonResponse(400, { error: err });
+          const conflict = findUniqueConflict(op.tableId, merged, op.rowId);
+          if (conflict) return jsonResponse(409, { error: `unique constraint: ${conflict}` });
+        }
+        if (op.action === 'delete' && !t.has(op.rowId)) return jsonResponse(404, { error: 'row missing' });
       }
       for (const op of ops) {
         const t = tbl(op.tableId);
@@ -138,6 +213,11 @@ function fakeAppwrite(method, url, parsedBody, headers) {
       openTxns.get(stageTxn).push({ action: 'create', tableId: create[1], rowId, data: parsedBody.data ?? {} });
       return jsonResponse(201, { $id: rowId, ...parsedBody.data });
     }
+    if (failCreateFor === create[1]) return jsonResponse(500, { error: 'injected create failure' });
+    const err = validatePayload(create[1], parsedBody.data ?? {}, { isCreate: true });
+    if (err) return jsonResponse(400, { error: err });
+    const conflict = findUniqueConflict(create[1], parsedBody.data ?? {}, null);
+    if (conflict) return jsonResponse(409, { error: `unique constraint: ${conflict}` });
     if (t.has(rowId)) return jsonResponse(409, { error: 'duplicate' });
     const rowData = { $id: rowId, ...parsedBody.data };
     t.set(rowId, rowData);
@@ -155,9 +235,14 @@ function fakeAppwrite(method, url, parsedBody, headers) {
         openTxns.get(stageTxn).push({ action: 'update', tableId: rowPath[1], rowId: rowPath[2], data: parsedBody.data ?? {} });
         return jsonResponse(200, { ...cur, ...parsedBody.data });
       }
-      const upd = { ...cur, ...parsedBody.data };
-      t.set(rowPath[2], upd);
-      return jsonResponse(200, upd);
+      if (failPatchFor === rowPath[1]) return jsonResponse(500, { error: 'injected patch failure' });
+      const merged = { ...cur, ...parsedBody.data };
+      const err = validatePayload(rowPath[1], merged, { isCreate: false });
+      if (err) return jsonResponse(400, { error: err });
+      const conflict = findUniqueConflict(rowPath[1], merged, rowPath[2]);
+      if (conflict) return jsonResponse(409, { error: `unique constraint: ${conflict}` });
+      t.set(rowPath[2], merged);
+      return jsonResponse(200, merged);
     }
     if (method === 'DELETE') {
       if (staging) { openTxns.get(stageTxn).push({ action: 'delete', tableId: rowPath[1], rowId: rowPath[2] }); return jsonResponse(204, null); }
@@ -231,6 +316,8 @@ function freshWorld() {
   forceCommitFailure = false;
   failStagedCreateFor = null;
   failDeleteFor = null;
+  failCreateFor = null;
+  failPatchFor = null;
   throwOnStagedPatch = false;
   failRollback = false;
   capturedRequests.length = 0;
@@ -366,13 +453,16 @@ test('a transaction commit failure rejects the join without partial state', asyn
   assert.equal(tbl('invitations').values().next().value.consumed_at, undefined);
 });
 
-test('concurrent pair.start from the same user yields exactly one couple', async () => {
+test('concurrent pair.start from the same user yields one couple and one live invitation', async () => {
   freshWorld();
   const r1 = await call('pair.start', 'jwt-a', {});
   assert.equal(r1.code, 200);
   const r2 = await call('pair.start', 'jwt-a', {});
-  assert.equal(r2.code, 409);
-  assert.equal([...tbl('couples').values()].length, 1);
+  assert.equal(r2.code, 200, JSON.stringify(r2));
+  assert.equal(r2.data.coupleId, r1.data.coupleId, 're-invite targets the same half-empty couple');
+  assert.equal([...tbl('couples').values()].length, 1, 'no second couple');
+  const live = [...tbl('invitations').values()].filter((i) => !i.consumed_at);
+  assert.equal(live.length, 1, 'the new invitation revoked the previous unconsumed one');
 });
 
 // ---- Letters, sealed responses, reveal ----------------------------------------
@@ -835,4 +925,248 @@ test('a rollback failure does not mask the original stage failure', async () => 
   throwOnStagedPatch = false;
   assert.equal(r.code, 500, 'original failure still reported');
   assert.equal(tbl('couples').get(start.data.coupleId).partner_b_id ?? null, null, 'no partial state despite failed rollback');
+});
+
+// ---- Couple membership transitions (P0: nullable slots) -----------------------
+
+test('partner A deletion lets B re-invite and C fills the empty slot', async () => {
+  seedCouple();
+  const del = await call('account.delete', 'jwt-a', {});
+  assert.equal(del.code, 200, JSON.stringify(del));
+  const couple = tbl('couples').get('couple-1');
+  assert.equal(couple.partner_a_id ?? null, null, 'A slot vacated');
+  assert.equal(couple.partner_b_id, 'user-b', 'B keeps the couple');
+  const inv = await call('pair.start', 'jwt-b', {});
+  assert.equal(inv.code, 200, JSON.stringify(inv));
+  assert.equal(inv.data.coupleId, 'couple-1', 'invitation targets the EXISTING couple');
+  assert.equal(inv.data.rejoined, true);
+  const join = await call('pair.join', 'jwt-c', { code: inv.data.code });
+  assert.equal(join.code, 200, JSON.stringify(join));
+  const after = tbl('couples').get('couple-1');
+  assert.equal(after.partner_a_id, 'user-c', 'join filled the EMPTY slot');
+  assert.equal(after.partner_b_id, 'user-b', 'surviving partner not ejected');
+  const letter = await call('letter.today', 'jwt-b', {});
+  assert.equal(letter.code, 200, 'survivor keeps full couple access');
+  const newcomer = await call('letter.today', 'jwt-c', {});
+  assert.equal(newcomer.data.letter.$id, letter.data.letter.$id, 'new member sees the same couple letter');
+});
+
+test('partner B deletion lets A re-invite and C fills the empty slot', async () => {
+  seedCouple();
+  const del = await call('account.delete', 'jwt-b', {});
+  assert.equal(del.code, 200);
+  assert.equal(tbl('couples').get('couple-1').partner_a_id, 'user-a');
+  assert.equal(tbl('couples').get('couple-1').partner_b_id ?? null, null);
+  const inv = await call('pair.start', 'jwt-a', {});
+  assert.equal(inv.code, 200, JSON.stringify(inv));
+  assert.equal(inv.data.coupleId, 'couple-1');
+  const join = await call('pair.join', 'jwt-c', { code: inv.data.code });
+  assert.equal(join.code, 200, JSON.stringify(join));
+  const after = tbl('couples').get('couple-1');
+  assert.equal(after.partner_a_id, 'user-a', 'original partner keeps their slot');
+  assert.equal(after.partner_b_id, 'user-c', 'newcomer fills partner_b');
+});
+
+test('a complete couple still refuses a third pair.start', async () => {
+  seedCouple();
+  const r = await call('pair.start', 'jwt-a', {});
+  assert.equal(r.code, 409);
+  const r2 = await call('pair.start', 'jwt-b', {});
+  assert.equal(r2.code, 409);
+});
+
+test('a failed survivor re-invite commits nothing and retries cleanly', async () => {
+  seedCouple();
+  await call('account.delete', 'jwt-a', {});
+  forceCommitFailure = true;
+  const inv = await call('pair.start', 'jwt-b', {});
+  forceCommitFailure = false;
+  assert.equal(inv.code, 500);
+  assert.equal([...tbl('invitations').values()].filter((i) => !i.consumed_at).length, 0, 'invitation rolled back');
+  const retry = await call('pair.start', 'jwt-b', {});
+  assert.equal(retry.code, 200, JSON.stringify(retry));
+  assert.equal([...tbl('invitations').values()].filter((i) => !i.consumed_at).length, 1, 'no duplicate invitation after retry');
+});
+
+// ---- Strict schema oracle (contract-driven mock) ------------------------------
+
+test('unknown columns are rejected like the real API', async () => {
+  freshWorld();
+  const h = { 'X-Appwrite-Project': 'test-project', 'X-Appwrite-Key': 'test-server-key', 'Content-Type': 'application/json' };
+  const r = await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/memories/rows', {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ rowId: 'unique()', data: { couple_id: 'c', author_id: 'u', title: 't', note: '', memory_date: '2026-01-01', created_at: now(), bogus_column: 'x' } }),
+  });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /unknown column/);
+});
+
+test('varchar size overflows are rejected', async () => {
+  freshWorld();
+  const h = { 'X-Appwrite-Project': 'test-project', 'X-Appwrite-Key': 'test-server-key', 'Content-Type': 'application/json' };
+  const r = await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/memories/rows', {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ rowId: 'unique()', data: { couple_id: 'c', author_id: 'u', title: 'x'.repeat(130), note: '', memory_date: '2026-01-01', created_at: now() } }),
+  });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /size 120/);
+});
+
+test('missing required columns and nulls in required columns are rejected', async () => {
+  freshWorld();
+  const h = { 'X-Appwrite-Project': 'test-project', 'X-Appwrite-Key': 'test-server-key', 'Content-Type': 'application/json' };
+  const missing = await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/profiles/rows', {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ rowId: 'user-x', data: { display_name: 'x' } }),
+  });
+  assert.equal(missing.status, 400);
+  assert.match((await missing.json()).error, /missing required column profiles\.email/);
+  const nulled = await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/responses/rows', {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ rowId: 'unique()', data: { letter_id: 'l', author_id: 'u', body: null, created_at: now() } }),
+  });
+  assert.equal(nulled.status, 400);
+  assert.match((await nulled.json()).error, /null in required column responses\.body/);
+});
+
+test('unique-index conflicts are rejected with 409 (nulls never conflict)', async () => {
+  seedCouple();
+  const h = { 'X-Appwrite-Project': 'test-project', 'X-Appwrite-Key': 'test-server-key', 'Content-Type': 'application/json' };
+  const conflict = await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/couples/rows', {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ rowId: 'unique()', data: { partner_a_id: 'user-a', created_at: now() } }),
+  });
+  assert.equal(conflict.status, 409, 'partner_a_unique enforced');
+  const nulled = await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/couples/rows', {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ rowId: 'unique()', data: { partner_a_id: 'user-z', created_at: now() } }),
+  });
+  assert.equal(nulled.status, 201, 'null partner_b never conflicts');
+});
+
+// ---- Mutation failure injection (no false successes) ---------------------------
+
+test('lumi.care reports failure and does not double-apply warmth', async () => {
+  seedCouple();
+  const before = (await call('lumi.state', 'jwt-a', {})).data.pet.affection;
+  failPatchFor = 'pet_states';
+  const bad = await call('lumi.care', 'jwt-a', { action: 'water' });
+  failPatchFor = null;
+  assert.equal(bad.code, 500, 'failed care is not reported as success');
+  const retry = await call('lumi.care', 'jwt-a', { action: 'water' });
+  assert.equal(retry.code, 200);
+  assert.equal(retry.data.pet.affection, Math.min(100, before + 4), 'exactly one warmth step applied');
+  assert.ok(retry.data.pet.last_watered_at, 'water timestamp stamped');
+});
+
+test('memory mutations report server failures', async () => {
+  seedCouple();
+  failCreateFor = 'memories';
+  const badCreate = await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: '2026-10-01' });
+  failCreateFor = null;
+  assert.equal(badCreate.code, 500);
+  const ok = await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: '2026-10-01' });
+  assert.equal(ok.code, 200);
+  assert.equal([...tbl('memories').values()].length, 1, 'retry created no duplicate');
+  const id = ok.data.memory.$id;
+  failPatchFor = 'memories';
+  const badUpdate = await call('memory.update', 'jwt-a', { id, title: 'renamed' });
+  failPatchFor = null;
+  assert.equal(badUpdate.code, 500);
+  const goodUpdate = await call('memory.update', 'jwt-a', { id, title: 'renamed' });
+  assert.equal(goodUpdate.code, 200);
+  failDeleteFor = 'memories';
+  const badDelete = await call('memory.delete', 'jwt-a', { id });
+  failDeleteFor = null;
+  assert.equal(badDelete.code, 500, 'failed delete is not reported as gone');
+  assert.ok(tbl('memories').get(id), 'row retained after failed delete');
+  const goodDelete = await call('memory.delete', 'jwt-a', { id });
+  assert.equal(goodDelete.code, 200);
+  assert.equal(tbl('memories').get(id), undefined);
+  const again = await call('memory.delete', 'jwt-a', { id });
+  assert.equal(again.code, 200, 'idempotent delete of an already-gone row stays a genuine success');
+});
+
+test('mood and note mutations report server failures without duplicates', async () => {
+  seedCouple();
+  failCreateFor = 'mood_check_ins';
+  const badMood = await call('mood.add', 'jwt-a', { emoji: 'calm', note: '' });
+  failCreateFor = null;
+  assert.equal(badMood.code, 500);
+  const mood = await call('mood.add', 'jwt-a', { emoji: 'calm', note: '' });
+  assert.equal(mood.code, 200);
+  assert.equal([...tbl('mood_check_ins').values()].length, 1);
+  failCreateFor = 'pocket_notes';
+  const badNote = await call('note.add', 'jwt-a', { body: 'hello' });
+  failCreateFor = null;
+  assert.equal(badNote.code, 500);
+  const note = await call('note.add', 'jwt-a', { body: 'hello' });
+  assert.equal(note.code, 200);
+  assert.equal([...tbl('pocket_notes').values()].length, 1);
+});
+
+test('adventure completion reports server failures', async () => {
+  seedCouple();
+  const adv = (await call('adventure.current', 'jwt-a', {})).data.adventure;
+  failCreateFor = 'adventure_parts';
+  const bad = await call('adventure.complete', 'jwt-a', { adventure_id: adv.$id, entry: 'my half' });
+  failCreateFor = null;
+  assert.equal(bad.code, 500, 'rejected write is not reported as accepted');
+  const retry = await call('adventure.complete', 'jwt-a', { adventure_id: adv.$id, entry: 'my half' });
+  assert.equal(retry.code, 200);
+  assert.equal([...tbl('adventure_parts').values()].length, 1);
+});
+
+test('reaction create and update report server failures', async () => {
+  seedCouple();
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'A' });
+  await call('response.submit', 'jwt-b', { letter_id: letter.$id, body: 'B' });
+  const target = (await call('response.state', 'jwt-b', { letter_id: letter.$id })).data.partner.$id;
+  failCreateFor = 'reactions';
+  const bad = await call('reaction.set', 'jwt-b', { response_id: target, kind: 'heart' });
+  failCreateFor = null;
+  assert.equal(bad.code, 500);
+  const ok = await call('reaction.set', 'jwt-b', { response_id: target, kind: 'heart' });
+  assert.equal(ok.code, 200);
+  assert.equal([...tbl('reactions').values()].length, 1);
+  failPatchFor = 'reactions';
+  const badUpd = await call('reaction.set', 'jwt-b', { response_id: target, kind: 'smile' });
+  failPatchFor = null;
+  assert.equal(badUpd.code, 500);
+  assert.equal([...tbl('reactions').values()][0].kind, 'heart', 'failed update changed nothing');
+  const upd = await call('reaction.set', 'jwt-b', { response_id: target, kind: 'smile' });
+  assert.equal(upd.code, 200);
+  assert.equal([...tbl('reactions').values()].length, 1, 'update never duplicates');
+  assert.equal([...tbl('reactions').values()][0].kind, 'smile');
+});
+
+test('letter and response creation report server failures; sealed answers stay immutable', async () => {
+  seedCouple();
+  failCreateFor = 'daily_letters';
+  const badLetter = await call('letter.today', 'jwt-a', {});
+  failCreateFor = null;
+  assert.equal(badLetter.code, 500);
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  failCreateFor = 'responses';
+  const badResp = await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'first' });
+  failCreateFor = null;
+  assert.equal(badResp.code, 500);
+  const ok = await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'first and final' });
+  assert.equal(ok.code, 200);
+  const sealed = await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'overwrite attempt' });
+  assert.equal(sealed.data.alreadySealed, true);
+  assert.equal(sealed.data.response.body, 'first and final', 'retry never changes a sealed answer');
+  assert.equal([...tbl('responses').values()].filter((x) => x.author_id === 'user-a').length, 1);
+});
+
+test('profile bootstrap reports creation failures', async () => {
+  freshWorld();
+  failCreateFor = 'profiles';
+  const r = await call('profile.get', 'jwt-c', {});
+  failCreateFor = null;
+  assert.equal(r.code, 500, 'failed bootstrap surfaces as a server error, not a fake profile');
+  const retry = await call('profile.get', 'jwt-c', {});
+  assert.equal(retry.code, 200);
+  assert.equal(retry.data.profile.$id, 'user-c');
 });

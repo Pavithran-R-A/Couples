@@ -66,7 +66,7 @@
         {
           "key": "partner_a_id",
           "type": "varchar",
-          "required": true,
+          "required": false,
           "size": 36
         },
         {
@@ -159,6 +159,14 @@
           "attributes": [
             "created_by",
             "expires_at"
+          ]
+        },
+        {
+          "key": "by_couple_creator",
+          "type": "key",
+          "attributes": [
+            "couple_id",
+            "created_by"
           ]
         }
       ]
@@ -286,6 +294,13 @@
           "type": "key",
           "attributes": [
             "letter_id"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
           ]
         }
       ]
@@ -534,6 +549,13 @@
             "couple_id",
             "created_at"
           ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
+          ]
         }
       ]
     },
@@ -579,6 +601,13 @@
           "attributes": [
             "couple_id",
             "created_at"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
           ]
         }
       ]
@@ -672,6 +701,13 @@
           "type": "unique",
           "attributes": [
             "adventure_id",
+            "author_id"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
             "author_id"
           ]
         }

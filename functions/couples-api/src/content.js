@@ -242,15 +242,23 @@ export const handlers = {
       const iAmA = couple.partner_a_id === user.id;
       const other = iAmA ? couple.partner_b_id : couple.partner_a_id;
       if (other) {
+        // Hygiene: the caller's own unconsumed invitations must not outlive
+        // their membership (an expired invite is harmless, a live one is not).
+        await delAll('invitations', [['equal', 'couple_id', couple.$id], ['equal', 'created_by', user.id]]);
         // Leave-pairing: clear only the CALLER's slot so the remaining
         // partner keeps the couple, its letters and the companion intact.
+        // Clearing the slot severs couple access IMMEDIATELY — subsequent
+        // calls resolve no couple and are denied. Idempotent on retry.
         const patch = iAmA ? { partner_a_id: null } : { partner_b_id: null };
         const upd = await updateRow('couples', couple.$id, patch);
         if (upd.status >= 400) failed += 1;
       } else {
         // Last member: the shared couple content goes with the couple.
         // Adventure parts of a partner who deleted their account earlier are
-        // removed with their adventures so no orphan rows survive.
+        // removed with their adventures so no orphan rows survive. This runs
+        // WHILE the caller is still a member, so a failure here stays
+        // retryable: the retry resolves the couple again and re-enters this
+        // branch instead of orphaning a memberless couple.
         const adventures = await listRowsWhere('weekly_adventures', [['equal', 'couple_id', couple.$id]], 100);
         for (const a of adventures) await delAll('adventure_parts', [['equal', 'adventure_id', a.$id]]);
         await delAll('daily_letters', [['equal', 'couple_id', couple.$id]]);
@@ -258,14 +266,28 @@ export const handlers = {
         await delAll('milestones', [['equal', 'couple_id', couple.$id]]);
         await delAll('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
         await delAll('invitations', [['equal', 'couple_id', couple.$id]]);
-        const out = await deleteRow('couples', couple.$id);
-        if (out.status >= 400 && out.status !== 404) failed += 1;
+        // The couple row is removed only when every shared deletion
+        // succeeded: a memberless couple with surviving shared rows could
+        // never be reached again by a retry (no member resolves it).
+        if (!failed) {
+          const out = await deleteRow('couples', couple.$id);
+          if (out.status >= 400 && out.status !== 404) failed += 1;
+        }
       }
     }
+    // Ordered, retryable deletion sequence — NOT one atomic multi-service
+    // transaction: TablesDB cleanup and Appwrite Auth deletion are separate
+    // services that cannot share a transaction. The guarantee is ordering +
+    // idempotence: the Auth user and the profile row are destroyed ONLY when
+    // every earlier step succeeded, so a partial failure never leaves an
+    // unreachable account with surviving private rows. Any failure reports
+    // 500 while credentials stay valid, and a retry skips already-deleted
+    // rows (404 treated as success).
+    if (failed) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     const prof = await deleteRow('profiles', user.id);
-    if (prof.status >= 400 && prof.status !== 404) failed += 1;
+    if (prof.status >= 400 && prof.status !== 404) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     const auth = await fetch(`${ENDPOINT}/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: jsonHeaders() });
-    if (!auth.ok && auth.status !== 404) failed += 1;
+    if (!auth.ok && auth.status !== 404) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     if (failed) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     return res.json({ ok: true, data: { deleted: true } });
   },

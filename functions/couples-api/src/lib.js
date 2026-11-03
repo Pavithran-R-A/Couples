@@ -114,15 +114,27 @@ export const updateRow = (table, rowId, data, txnId) => api('PATCH', table, rowI
 export const deleteRow = (table, rowId) => api('DELETE', table, rowId);
 
 export function qLimit(n) {
-  return `limit(${n})`;
+  // Official Appwrite Query serialization (sdk-for-web src/query.ts):
+  // JSON.stringify({ method, attribute?, values }) — a limit query carries
+  // no attribute.
+  return JSON.stringify({ method: 'limit', values: [n] });
 }
 
 export function qEqual(attr, value) {
-  return `equal(${JSON.stringify(attr)}, ${JSON.stringify(value)})`;
+  // Official Appwrite Query serialization: equal(attribute, value) is
+  // JSON.stringify({ method: 'equal', attribute, values: [value] }).
+  // The legacy human-readable `equal("attr", "value")` call-string format is
+  // NOT the REST contract and is rejected by the real API.
+  return JSON.stringify({
+    method: 'equal',
+    attribute: attr,
+    values: Array.isArray(value) ? value : [value],
+  });
 }
 
-// Lists rows as a plain array. A failing list THROWS rather than returning
-// []: treating an API error as "no rows" would wrongly admit create paths.
+// Lists rows as a plain array. Failures THROW rather than returning []:
+// an API error or an unexpected 2xx body without a rows array must never
+// masquerade as "no rows" (that would wrongly admit create paths).
 export async function listRowsWhere(table, filters, limit = 100, txnId) {
   // Documented shape: one queries[] parameter per query string, each
   // individually URI-encoded (Appwrite rejects a JSON-array parameter).
@@ -134,7 +146,8 @@ export async function listRowsWhere(table, filters, limit = 100, txnId) {
   const r = await fetch(url, { headers: h });
   const out = await r.json().catch(() => null);
   if (r.status >= 400) throw new Error(`listRowsWhere ${table}: HTTP ${r.status}`);
-  return out?.rows ?? [];
+  if (!out || !Array.isArray(out.rows)) throw new Error(`listRowsWhere ${table}: unexpected response shape`);
+  return out.rows;
 }
 
 // TablesDB transaction lifecycle — the OFFICIAL API, verified against the
@@ -168,7 +181,15 @@ export async function withTransaction(run) {
   const created = await transactionCreate();
   if (created.status >= 400) return { status: created.status, ok: false };
   const txnId = created.data?.$id;
-  const staged = await run((method, table, rowId, data) => api(method, table, rowId, data, txnId));
+  let staged;
+  try {
+    staged = await run((method, table, rowId, data) => api(method, table, rowId, data, txnId));
+  } catch (e) {
+    // A thrown stage (network interruption, unexpected exception) must not
+    // leave staged operations dangling: best-effort rollback, then rethrow.
+    await transactionRollback(txnId).catch(() => null);
+    throw e;
+  }
   // Abort on any failed stage — either the runner reported its own verdict
   // (ok:false) or a raw API result carries a failing status. The staged
   // operations are explicitly rolled back, so no partial state is applied.

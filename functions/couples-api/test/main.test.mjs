@@ -32,23 +32,40 @@ let txSeq = 0;
 let forceCommitFailure = false;
 let failStagedCreateFor = null;
 let failDeleteFor = null;
+let throwOnStagedPatch = false;
+let failRollback = false;
 const now = () => new Date().toISOString();
 
 function tbl(t) { if (!tables.has(t)) tables.set(t, new Map()); return tables.get(t); }
 function genId() { return `row-${Math.random().toString(36).slice(2, 10)}`; }
 
+// Parses ONLY the official Appwrite Query serialization:
+// JSON.stringify({ method, attribute?, values }) — e.g.
+// {"method":"equal","attribute":"name","values":["John"]} and
+// {"method":"limit","values":[6]}. The legacy human-readable function-call
+// strings (`equal("x","y")`, `limit(6)`) are NOT part of the REST contract
+// and are rejected exactly like the real API rejects malformed queries.
 function applyFilters(rows, queries) {
   let out = rows;
+  let limit = rows.length;
   for (const q of queries) {
-    const eq = q.match(/^equal\("([^"]+)",\s*(.+?)\)$/);
-    if (eq) {
-      const attr = eq[1];
-      let val;
-      try { val = JSON.parse(eq[2]); } catch { val = eq[2]; }
-      out = out.filter((r) => String(r[attr]) === String(val));
+    let parsed;
+    try { parsed = JSON.parse(q); } catch { throw new Error(`malformed query (not JSON): ${q}`); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+      || typeof parsed.method !== 'string'
+      || !Array.isArray(parsed.values)
+      || (parsed.method !== 'limit' && typeof parsed.attribute !== 'string')) {
+      throw new Error(`unsupported or malformed query: ${q}`);
+    }
+    if (parsed.method === 'equal') {
+      out = out.filter((r) => parsed.values.some((v) => String(r[parsed.attribute]) === String(v)));
+    } else if (parsed.method === 'limit') {
+      limit = Math.min(limit, Number(parsed.values[0]) || 0);
+    } else {
+      throw new Error(`unsupported query method: ${parsed.method}`);
     }
   }
-  return out;
+  return out.slice(0, limit);
 }
 
 function jsonResponse(status, data) {
@@ -88,6 +105,7 @@ function fakeAppwrite(method, url, parsedBody, headers) {
   if (txnRoute && method === 'PATCH') {
     const ops = openTxns.get(txnRoute[1]) ?? [];
     if (parsedBody && parsedBody.rollback) {
+      if (failRollback) return jsonResponse(500, { error: 'rollback failed' });
       openTxns.delete(txnRoute[1]);
       return jsonResponse(200, { $id: txnRoute[1], status: 'rolled back' });
     }
@@ -132,7 +150,11 @@ function fakeAppwrite(method, url, parsedBody, headers) {
     if (!cur) return jsonResponse(404, { error: 'not found' });
     if (method === 'GET') return jsonResponse(200, cur);
     if (method === 'PATCH') {
-      if (staging) { openTxns.get(stageTxn).push({ action: 'update', tableId: rowPath[1], rowId: rowPath[2], data: parsedBody.data ?? {} }); return jsonResponse(200, { ...cur, ...parsedBody.data }); }
+      if (staging) {
+        if (throwOnStagedPatch) throw new Error('network interruption');
+        openTxns.get(stageTxn).push({ action: 'update', tableId: rowPath[1], rowId: rowPath[2], data: parsedBody.data ?? {} });
+        return jsonResponse(200, { ...cur, ...parsedBody.data });
+      }
       const upd = { ...cur, ...parsedBody.data };
       t.set(rowPath[2], upd);
       return jsonResponse(200, upd);
@@ -147,8 +169,12 @@ function fakeAppwrite(method, url, parsedBody, headers) {
   const list = path.match(/^\/tablesdb\/[^/]+\/tables\/([^/]+)\/rows$/);
   if (list && method === 'GET') {
     const queries = new URL(url).searchParams.getAll('queries[]');
-    let rows = [...tbl(list[1]).values()];
-    rows = applyFilters(rows, queries);
+    let rows;
+    try {
+      rows = applyFilters([...tbl(list[1]).values()], queries);
+    } catch (e) {
+      return jsonResponse(400, { error: String(e.message) });
+    }
     return jsonResponse(200, { rows, total: rows.length });
   }
   return jsonResponse(404, { error: 'unknown route' });
@@ -165,6 +191,7 @@ globalThis.fetch = async (url, options = {}) => {
     path,
     body: parsed ?? null,
     transactionHeader: Boolean(headers['X-Appwrite-Transaction-Id']),
+    queries: new URL(url).searchParams.getAll('queries[]'),
   });
   if (path === '/account' && method === 'GET') {
     const jwt = headers['X-Appwrite-JWT'];
@@ -204,6 +231,8 @@ function freshWorld() {
   forceCommitFailure = false;
   failStagedCreateFor = null;
   failDeleteFor = null;
+  throwOnStagedPatch = false;
+  failRollback = false;
   capturedRequests.length = 0;
   for (const k of Object.keys(users)) delete users[k];
   Object.assign(users, USER_SEED());
@@ -671,4 +700,139 @@ test('partner reactions on the deleted account responses are removed (no orphans
   assert.equal(r.code, 200, JSON.stringify(r));
   assert.equal([...tbl('reactions').values()].length, 0, 'orphan reaction removed with its target');
   assert.equal([...tbl('responses').values()].find((x) => x.author_id === 'user-a'), undefined);
+});
+
+// ---- Official Query serialization (P0-A regression oracles) -------------------
+
+test('couple lookups serialize queries in the official JSON format', async () => {
+  freshWorld();
+  const r = await call('pair.start', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  const parsedQueries = capturedRequests
+    .flatMap((x) => x.queries || [])
+    .map((s) => { try { return JSON.parse(s); } catch { return null; } })
+    .filter(Boolean);
+  assert.ok(
+    parsedQueries.some((p) => p.method === 'equal' && p.attribute === 'partner_a_id' && Array.isArray(p.values) && p.values.includes('user-a')),
+    `expected official equal query, got: ${JSON.stringify(parsedQueries)}`
+  );
+  assert.ok(parsedQueries.some((p) => p.method === 'limit' && p.values[0] === 1), 'limit query uses the official shape');
+  assert.equal(
+    capturedRequests.some((x) => (x.queries || []).some((s) => /^equal\(|^limit\(/.test(s))),
+    false,
+    'no legacy function-call query strings are ever sent'
+  );
+});
+
+test('the legacy non-JSON query syntax is rejected; the official format is accepted', async () => {
+  const h = { 'X-Appwrite-Project': 'test-project', 'X-Appwrite-Key': 'test-server-key' };
+  const base = 'https://sgp.cloud.appwrite.io/v1/tablesdb/couples_main/tables/couples/rows';
+  const legacy = await fetch(`${base}?queries[]=${encodeURIComponent('equal("partner_a_id", "user-a")')}`, { headers: h });
+  assert.equal(legacy.status, 400, 'legacy equal(...) strings must be rejected');
+  const modern = await fetch(`${base}?queries[]=${encodeURIComponent(JSON.stringify({ method: 'equal', attribute: 'partner_a_id', values: ['user-a'] }))}`, { headers: h });
+  assert.equal(modern.status, 200);
+});
+
+test('an unexpected 2xx list body without rows is an error, not an empty result', async () => {
+  const lib = await import('../src/lib.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, headers: { get: () => '0' }, json: async () => ({ total: 0 }) });
+  try {
+    await assert.rejects(() => lib.listRowsWhere('couples', [['equal', 'partner_a_id', 'user-a']], 1), /unexpected response shape/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+// ---- Account deletion failure matrix (P0-B) -----------------------------------
+
+test('content-cleanup failure preserves credentials for a safe retry', async () => {
+  seedCouple();
+  await call('memory.create', 'jwt-a', { title: 'keepme', note: '', memory_date: '2026-10-01' });
+  failDeleteFor = 'memories';
+  const r1 = await call('account.delete', 'jwt-a', {});
+  failDeleteFor = null;
+  assert.equal(r1.code, 500, 'failure reported accurately');
+  assert.ok(users['user-a'], 'auth user NOT deleted while cleanup failed');
+  assert.ok(tbl('profiles').get('user-a'), 'profile row retained for the retry');
+  assert.equal(tbl('couples').get('couple-1').partner_a_id ?? null, null, 'caller unlinked');
+  assert.equal(tbl('couples').get('couple-1').partner_b_id, 'user-b', 'partner keeps the couple');
+  assert.ok([...tbl('memories').values()].length, 'failed row retained');
+  const access = await call('memory.list', 'jwt-a', {});
+  assert.equal(access.code, 403, 'unlinked member loses couple access immediately');
+  const partnerView = await call('letter.today', 'jwt-b', {});
+  assert.equal(partnerView.code, 200, 'surviving partner keeps full access');
+  const r2 = await call('account.delete', 'jwt-a', {});
+  assert.equal(r2.code, 200, 'retry completes');
+  assert.equal(users['user-a'], undefined, 'credentials destroyed only after full cleanup');
+  assert.equal(tbl('profiles').get('user-a'), undefined);
+  assert.equal([...tbl('memories').values()].length, 0);
+});
+
+test('last-member cleanup failure keeps the couple resolvable for retry', async () => {
+  seedCouple();
+  tbl('couples').get('couple-1').partner_b_id = null;
+  tbl('profiles').delete('user-b');
+  await call('letter.today', 'jwt-a', {});
+  failDeleteFor = 'daily_letters';
+  const r1 = await call('account.delete', 'jwt-a', {});
+  failDeleteFor = null;
+  assert.equal(r1.code, 500);
+  assert.ok(users['user-a'], 'credentials intact after shared-cleanup failure');
+  const couple = tbl('couples').get('couple-1');
+  assert.ok(couple, 'couple row retained');
+  assert.equal(couple.partner_a_id, 'user-a', 'membership preserved so the retry re-enters the last-member branch');
+  const r2 = await call('account.delete', 'jwt-a', {});
+  assert.equal(r2.code, 200, JSON.stringify(r2));
+  assert.equal(tbl('couples').get('couple-1'), undefined, 'couple removed on retry');
+  assert.equal([...tbl('daily_letters').values()].length, 0, 'shared letters removed with the couple');
+  assert.equal(users['user-a'], undefined);
+  assert.equal(tbl('profiles').get('user-a'), undefined);
+});
+
+test('a departing member invites are revoked while the partner invite is retained', async () => {
+  seedCouple();
+  tbl('invitations').set('inv-a', { $id: 'inv-a', couple_id: 'couple-1', created_by: 'user-a', code_digest: 'a', expires_at: new Date(Date.now() + DAY_MS).toISOString(), created_at: now() });
+  tbl('invitations').set('inv-b', { $id: 'inv-b', couple_id: 'couple-1', created_by: 'user-b', code_digest: 'b', expires_at: new Date(Date.now() + DAY_MS).toISOString(), created_at: now() });
+  const r = await call('account.delete', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal([...tbl('invitations').values()].find((i) => i.created_by === 'user-a'), undefined, 'departing member invite revoked');
+  assert.ok([...tbl('invitations').values()].find((i) => i.created_by === 'user-b'), 'partner invite retained');
+});
+
+// ---- Transaction robustness (Phase 4) -----------------------------------------
+
+test('a commit conflict fails the whole transaction without partial application', async () => {
+  freshWorld();
+  const lib = await import('../src/lib.js');
+  tbl('couples').set('couple-x', { $id: 'couple-x', partner_a_id: 'z', partner_b_id: null, created_at: now() });
+  const out = await lib.withTransaction(async (apiTx) => apiTx('POST', 'couples', 'couple-x', { partner_a_id: 'y', created_at: now() }));
+  assert.equal(out.ok, false);
+  assert.equal(out.status, 409);
+  assert.equal(tbl('couples').get('couple-x').partner_a_id, 'z', 'existing row untouched by the failed commit');
+});
+
+test('a thrown stage triggers a best-effort rollback and leaves no partial state', async () => {
+  freshWorld();
+  const start = await call('pair.start', 'jwt-a', {});
+  throwOnStagedPatch = true;
+  const r = await call('pair.join', 'jwt-b', { code: start.data.code });
+  throwOnStagedPatch = false;
+  assert.equal(r.code, 500, 'network interruption surfaces as a server error');
+  const rollbacks = capturedRequests.filter((x) => x.method === 'PATCH' && /^\/tablesdb\/transactions\/txn-\d+$/.test(x.path) && x.body && x.body.rollback);
+  assert.ok(rollbacks.length >= 1, 'rollback issued after the exception');
+  assert.equal(tbl('couples').get(start.data.coupleId).partner_b_id ?? null, null, 'no partial join');
+  assert.equal([...tbl('invitations').values()][0].consumed_at ?? null, null, 'invitation not consumed');
+});
+
+test('a rollback failure does not mask the original stage failure', async () => {
+  freshWorld();
+  const start = await call('pair.start', 'jwt-a', {});
+  failRollback = true;
+  throwOnStagedPatch = true;
+  const r = await call('pair.join', 'jwt-b', { code: start.data.code });
+  failRollback = false;
+  throwOnStagedPatch = false;
+  assert.equal(r.code, 500, 'original failure still reported');
+  assert.equal(tbl('couples').get(start.data.coupleId).partner_b_id ?? null, null, 'no partial state despite failed rollback');
 });

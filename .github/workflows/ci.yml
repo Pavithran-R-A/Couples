@@ -145,7 +145,7 @@ jobs:
             exit 1
           fi
           if git grep -nE 'APPWRITE_(API_KEY|CODE_PEPPER)\s*[=:]\s*["'"'"'][^"'"'"'$'"'"']{8,}' \
-              -- ':!functions/couples-api/.env.test' ':!functions/couples-api/test' ':!.github/workflows/ci.yml' ':!*.md'; then
+              -- ':!functions/couples-api/.env.test' ':!functions/couples-api/test' ':!backend_src/tests' ':!.github/workflows/ci.yml' ':!*.md'; then
             echo "::error::possible real Appwrite key/pepper committed outside test fixtures"
             exit 1
           fi

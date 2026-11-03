@@ -10,22 +10,28 @@ import assert from 'node:assert/strict';
 process.env.APPWRITE_ENDPOINT = 'https://sgp.cloud.appwrite.io/v1';
 process.env.APPWRITE_API_KEY = 'test-server-key';
 process.env.APPWRITE_FUNCTION_PROJECT_ID = 'test-project';
-process.env.APPWRITE_CODE_PEPPER = 'test-pepper';
+process.env.APPWRITE_CODE_PEPPER = 'test-pepper-0123456789abcdef';
 
 // ---- In-memory Appwrite TablesDB REST simulation ---------------------------
 
 const USER_SEED = () => ({
-  'user-a': { $id: 'user-a', email: 'a@test.local', name: 'A' },
-  'user-b': { $id: 'user-b', email: 'b@test.local', name: 'B' },
-  'user-c': { $id: 'user-c', email: 'c@test.local', name: 'C' },
+  'user-a': { $id: 'user-a', email: 'a@test.local', name: 'A', emailVerification: true },
+  'user-b': { $id: 'user-b', email: 'b@test.local', name: 'B', emailVerification: true },
+  'user-c': { $id: 'user-c', email: 'c@test.local', name: 'C', emailVerification: true },
+  'user-u': { $id: 'user-u', email: 'u@test.local', name: 'U', emailVerification: false },
 });
 const users = USER_SEED();
-const validJwts = { 'jwt-a': 'user-a', 'jwt-b': 'user-b', 'jwt-c': 'user-c' };
+const validJwts = { 'jwt-a': 'user-a', 'jwt-b': 'user-b', 'jwt-c': 'user-c', 'jwt-u': 'user-u' };
 const DAY_MS = 86400000;
 const tables = new Map();
 const openTxns = new Map();
+// Every request through the mock is captured so tests can assert the exact
+// wire format (methods, paths, payloads) against the official API.
+const capturedRequests = [];
 let txSeq = 0;
 let forceCommitFailure = false;
+let failStagedCreateFor = null;
+let failDeleteFor = null;
 const now = () => new Date().toISOString();
 
 function tbl(t) { if (!tables.has(t)) tables.set(t, new Map()); return tables.get(t); }
@@ -52,13 +58,16 @@ function jsonResponse(status, data) {
 function fakeAppwrite(method, url, parsedBody, headers) {
   // Appwrite Cloud endpoints carry the /v1 API prefix in the pathname.
   const path = new URL(url).pathname.replace(/^\/v1/, '');
-  const txnId = headers['X-Appwrite-Transaction-Id'];
-  const staging = Boolean(txnId && openTxns.has(txnId));
+  // Transaction staging travels in the request BODY per the official API
+  // (row operations carry { transactionId }); there is no transaction header.
+  const stageTxn = parsedBody && parsedBody.transactionId;
+  const staging = Boolean(stageTxn && openTxns.has(stageTxn));
 
   if (path === '/account' && method === 'GET') {
     const jwt = headers['X-Appwrite-JWT'];
-    return validJwts[jwt]
-      ? jsonResponse(200, { $id: validJwts[jwt], email: '', name: '' })
+    const uid = validJwts[jwt];
+    return uid
+      ? jsonResponse(200, { $id: uid, email: users[uid]?.email || '', name: users[uid]?.name || '', emailVerification: Boolean(users[uid]?.emailVerification) })
       : jsonResponse(401, { error: 'invalid jwt' });
   }
   if (path.startsWith('/users/')) {
@@ -71,31 +80,46 @@ function fakeAppwrite(method, url, parsedBody, headers) {
     openTxns.set(id, []);
     return jsonResponse(200, { $id: id, status: 'created' });
   }
-  const commit = path.match(/^\/tablesdb\/transactions\/(txn-\d+)\/commit$/);
-  if (commit && method === 'POST') {
-    if (forceCommitFailure) return jsonResponse(500, { error: 'commit failed' });
-    const ops = openTxns.get(commit[1]) ?? [];
-    openTxns.delete(commit[1]);
-    // Atomicity: validate every staged operation before applying any, so a
-    // conflict fails the whole commit without partial application.
-    for (const op of ops) {
-      const t = tbl(op.tableId);
-      if (op.action === 'create' && t.has(op.rowId)) return jsonResponse(409, { error: 'duplicate' });
-      if (op.action === 'update' && !t.has(op.rowId)) return jsonResponse(404, { error: 'row missing' });
+  // Official transaction update: PATCH /tablesdb/transactions/{id} with
+  // { commit: true } or { rollback: true }. The old invented
+  // `POST .../commit` route is intentionally NOT implemented here — hitting
+  // it falls through to the 404 below, so any regression fails loudly.
+  const txnRoute = path.match(/^\/tablesdb\/transactions\/(txn-\d+)$/);
+  if (txnRoute && method === 'PATCH') {
+    const ops = openTxns.get(txnRoute[1]) ?? [];
+    if (parsedBody && parsedBody.rollback) {
+      openTxns.delete(txnRoute[1]);
+      return jsonResponse(200, { $id: txnRoute[1], status: 'rolled back' });
     }
-    for (const op of ops) {
-      const t = tbl(op.tableId);
-      if (op.action === 'create') t.set(op.rowId, { $id: op.rowId, ...op.data });
-      if (op.action === 'update') t.set(op.rowId, { ...t.get(op.rowId), ...op.data });
-      if (op.action === 'delete') t.delete(op.rowId);
+    if (parsedBody && parsedBody.commit) {
+      if (forceCommitFailure) return jsonResponse(500, { error: 'commit failed' });
+      openTxns.delete(txnRoute[1]);
+      // Atomicity: validate every staged operation before applying any, so a
+      // conflict fails the whole commit without partial application.
+      for (const op of ops) {
+        const t = tbl(op.tableId);
+        if (op.action === 'create' && t.has(op.rowId)) return jsonResponse(409, { error: 'duplicate' });
+        if (op.action === 'update' && !t.has(op.rowId)) return jsonResponse(404, { error: 'row missing' });
+      }
+      for (const op of ops) {
+        const t = tbl(op.tableId);
+        if (op.action === 'create') t.set(op.rowId, { $id: op.rowId, ...op.data });
+        if (op.action === 'update') t.set(op.rowId, { ...t.get(op.rowId), ...op.data });
+        if (op.action === 'delete') t.delete(op.rowId);
+      }
+      return jsonResponse(200, { $id: txnRoute[1], status: 'committed' });
     }
-    return jsonResponse(200, { status: 'committed' });
+    return jsonResponse(200, { $id: txnRoute[1], status: 'open' });
   }
   const create = path.match(/^\/tablesdb\/[^/]+\/tables\/([^/]+)\/rows$/);
   if (create && method === 'POST') {
     const t = tbl(create[1]);
     const rowId = parsedBody.rowId === 'unique()' ? genId() : parsedBody.rowId;
-    if (staging) { openTxns.get(txnId).push({ action: 'create', tableId: create[1], rowId, data: parsedBody.data ?? {} }); return jsonResponse(201, { $id: rowId, ...parsedBody.data }); }
+    if (staging) {
+      if (failStagedCreateFor === create[1]) return jsonResponse(500, { error: 'injected stage failure' });
+      openTxns.get(stageTxn).push({ action: 'create', tableId: create[1], rowId, data: parsedBody.data ?? {} });
+      return jsonResponse(201, { $id: rowId, ...parsedBody.data });
+    }
     if (t.has(rowId)) return jsonResponse(409, { error: 'duplicate' });
     const rowData = { $id: rowId, ...parsedBody.data };
     t.set(rowId, rowData);
@@ -108,13 +132,14 @@ function fakeAppwrite(method, url, parsedBody, headers) {
     if (!cur) return jsonResponse(404, { error: 'not found' });
     if (method === 'GET') return jsonResponse(200, cur);
     if (method === 'PATCH') {
-      if (staging) { openTxns.get(txnId).push({ action: 'update', tableId: rowPath[1], rowId: rowPath[2], data: parsedBody.data ?? {} }); return jsonResponse(200, { ...cur, ...parsedBody.data }); }
+      if (staging) { openTxns.get(stageTxn).push({ action: 'update', tableId: rowPath[1], rowId: rowPath[2], data: parsedBody.data ?? {} }); return jsonResponse(200, { ...cur, ...parsedBody.data }); }
       const upd = { ...cur, ...parsedBody.data };
       t.set(rowPath[2], upd);
       return jsonResponse(200, upd);
     }
     if (method === 'DELETE') {
-      if (staging) { openTxns.get(txnId).push({ action: 'delete', tableId: rowPath[1], rowId: rowPath[2] }); return jsonResponse(204, null); }
+      if (staging) { openTxns.get(stageTxn).push({ action: 'delete', tableId: rowPath[1], rowId: rowPath[2] }); return jsonResponse(204, null); }
+      if (failDeleteFor === rowPath[1]) return jsonResponse(500, { error: 'injected delete failure' });
       t.delete(rowPath[2]);
       return jsonResponse(204, null);
     }
@@ -135,9 +160,18 @@ globalThis.fetch = async (url, options = {}) => {
   let parsed = options.body;
   if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { /* keep */ } }
   const path = new URL(url).pathname.replace(/^\/v1/, '');
+  capturedRequests.push({
+    method,
+    path,
+    body: parsed ?? null,
+    transactionHeader: Boolean(headers['X-Appwrite-Transaction-Id']),
+  });
   if (path === '/account' && method === 'GET') {
     const jwt = headers['X-Appwrite-JWT'];
-    return validJwts[jwt] ? jsonResponse(200, { $id: validJwts[jwt] }) : jsonResponse(401, { error: 'invalid jwt' });
+    const uid = validJwts[jwt];
+    return uid
+      ? jsonResponse(200, { $id: uid, emailVerification: Boolean(users[uid]?.emailVerification) })
+      : jsonResponse(401, { error: 'invalid jwt' });
   }
   return fakeAppwrite(method, url, parsed, headers);
 };
@@ -168,6 +202,9 @@ function freshWorld() {
   tables.clear();
   openTxns.clear();
   forceCommitFailure = false;
+  failStagedCreateFor = null;
+  failDeleteFor = null;
+  capturedRequests.length = 0;
   for (const k of Object.keys(users)) delete users[k];
   Object.assign(users, USER_SEED());
   tbl('profiles').set('user-a', { $id: 'user-a', email: 'a@test.local', display_name: 'A', couple_id: null, created_at: now() });
@@ -481,4 +518,157 @@ test('safe account deletion removes only the caller rows and retains partner con
   assert.ok([...tbl('daily_letters').values()].find((l) => l.$id === letter.$id), 'shared letter retained');
   assert.equal(tbl('profiles').get('user-b'), undefined);
   assert.equal(users['user-b'], undefined, 'auth user deleted');
+});
+
+// ---- Transaction wire format (official API contract) -------------------------
+
+test('the invented POST commit endpoint does not exist in the API', async () => {
+  const h = { 'X-Appwrite-Project': 'test-project', 'X-Appwrite-Key': 'test-server-key', 'Content-Type': 'application/json' };
+  const created = await (await fetch('https://sgp.cloud.appwrite.io/v1/tablesdb/transactions', { method: 'POST', headers: h, body: '{}' })).json();
+  assert.match(created.$id, /^txn-\d+$/);
+  const wrong = await fetch(`https://sgp.cloud.appwrite.io/v1/tablesdb/transactions/${created.$id}/commit`, { method: 'POST', headers: h, body: '{}' });
+  assert.equal(wrong.status, 404, 'POST .../commit is not a real route');
+  const right = await fetch(`https://sgp.cloud.appwrite.io/v1/tablesdb/transactions/${created.$id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ commit: true }) });
+  assert.equal(right.status, 200, 'commit is a PATCH on the transaction resource');
+  const rolledBack = await (await fetch(`https://sgp.cloud.appwrite.io/v1/tablesdb/transactions/${created.$id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ rollback: true }) })).json();
+  assert.match(rolledBack.status, /committed|rolled back/);
+});
+
+test('pairing uses the official transaction wire format end to end', async () => {
+  freshWorld();
+  const start = await call('pair.start', 'jwt-a', {});
+  assert.equal(start.code, 200, JSON.stringify(start));
+  const join = await call('pair.join', 'jwt-b', { code: start.data.code });
+  assert.equal(join.code, 200, JSON.stringify(join));
+  const commits = capturedRequests.filter((r) => r.method === 'PATCH' && /^\/tablesdb\/transactions\/txn-\d+$/.test(r.path) && r.body && r.body.commit);
+  assert.ok(commits.length >= 2, 'pair.start and pair.join both commit via PATCH {commit:true}');
+  assert.ok(!capturedRequests.some((r) => r.method === 'POST' && r.path.endsWith('/commit')), 'no invented POST commit route is ever called');
+  assert.ok(!capturedRequests.some((r) => r.transactionHeader), 'no transaction header is ever sent');
+  const staged = capturedRequests.filter((r) => r.body && r.body.transactionId);
+  assert.ok(staged.length >= 6, 'row operations stage via body transactionId');
+});
+
+test('rollback discards staged operations after a failed stage', async () => {
+  freshWorld();
+  failStagedCreateFor = 'invitations';
+  const r = await call('pair.start', 'jwt-a', {});
+  failStagedCreateFor = null;
+  assert.equal(r.code, 500);
+  assert.equal([...tbl('couples').values()].length, 0, 'no orphan couple');
+  assert.equal([...tbl('invitations').values()].length, 0, 'no orphan invitation');
+  assert.equal(tbl('profiles').get('user-a').couple_id ?? null, null, 'profile not linked');
+  const rollbacks = capturedRequests.filter((r2) => r2.method === 'PATCH' && /^\/tablesdb\/transactions\/txn-\d+$/.test(r2.path) && r2.body && r2.body.rollback);
+  assert.ok(rollbacks.length >= 1, 'an explicit rollback was issued');
+});
+
+test('a failed commit in pair.start applies nothing', async () => {
+  freshWorld();
+  forceCommitFailure = true;
+  const r = await call('pair.start', 'jwt-a', {});
+  forceCommitFailure = false;
+  assert.equal(r.code, 500);
+  assert.equal([...tbl('couples').values()].length, 0);
+  assert.equal(tbl('profiles').get('user-a').couple_id ?? null, null);
+});
+
+// ---- Email verification gate -------------------------------------------------
+
+test('an unverified account cannot start pairing or join', async () => {
+  freshWorld();
+  const r1 = await call('pair.start', 'jwt-u', {});
+  assert.equal(r1.code, 403);
+  assert.match(r1.error, /Verify your email/);
+  const r2 = await call('pair.join', 'jwt-u', { code: 'XXXX-XXXX' });
+  assert.equal(r2.code, 403);
+  assert.equal([...tbl('couples').values()].length, 0);
+});
+
+test('an unverified account can still bootstrap and read its own profile', async () => {
+  freshWorld();
+  const r = await call('profile.get', 'jwt-u', {});
+  assert.equal(r.code, 200);
+  assert.equal(r.data.profile.$id, 'user-u');
+});
+
+// ---- Secret hygiene ------------------------------------------------------------
+
+test('the function refuses to start without a real pepper', async () => {
+  const saved = process.env.APPWRITE_CODE_PEPPER;
+  try {
+    delete process.env.APPWRITE_CODE_PEPPER;
+    await assert.rejects(() => import('../src/lib.js?nosecret'), /APPWRITE_CODE_PEPPER/);
+    process.env.APPWRITE_CODE_PEPPER = 'short';
+    await assert.rejects(() => import('../src/lib.js?weaksecret'), /APPWRITE_CODE_PEPPER/);
+  } finally {
+    process.env.APPWRITE_CODE_PEPPER = saved;
+  }
+});
+
+test('invitation digests are peppered, never plain SHA-256 of the code', async () => {
+  freshWorld();
+  const r = await call('pair.start', 'jwt-a', {});
+  const invite = [...tbl('invitations').values()][0];
+  const plain = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(r.data.code)))]
+    .map((b) => b.toString(16).padStart(2, '0')).join('');
+  assert.notEqual(invite.code_digest, plain, 'digest must not be an unsalted hash');
+  assert.notEqual(invite.code_digest, r.data.code);
+});
+
+// ---- Reveal atomicity ------------------------------------------------------------
+
+test('a failed reveal commit self-heals on the next state read', async () => {
+  seedCouple();
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'A' });
+  forceCommitFailure = true;
+  const r2 = await call('response.submit', 'jwt-b', { letter_id: letter.$id, body: 'B' });
+  forceCommitFailure = false;
+  assert.equal(r2.code, 200, 'the second submission itself succeeds');
+  assert.equal(r2.data.revealed, false, 'reveal stamping did not complete');
+  for (const row of tbl('responses').values()) assert.equal(row.revealed_at ?? null, null, 'no partial stamp');
+  const state = await call('response.state', 'jwt-a', { letter_id: letter.$id });
+  assert.equal(state.data.revealed, true, 'self-healed to a full reveal');
+  for (const row of tbl('responses').values()) assert.ok(row.revealed_at, 'both rows stamped');
+});
+
+// ---- Account deletion robustness -------------------------------------------------
+
+test('account deletion paginates beyond a single 100-row page', async () => {
+  seedCouple();
+  for (let i = 0; i < 150; i += 1) {
+    tbl('mood_check_ins').set(`mood-${i}`, { $id: `mood-${i}`, couple_id: 'couple-1', author_id: 'user-b', emoji: 'x', note: '', created_at: now() });
+  }
+  const r = await call('account.delete', 'jwt-b', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal([...tbl('mood_check_ins').values()].filter((m) => m.author_id === 'user-b').length, 0, 'all 150 rows deleted');
+});
+
+test('a failed delete reports 500 and can be retried to completion', async () => {
+  seedCouple();
+  await call('memory.create', 'jwt-a', { title: 'keepme', note: '', memory_date: '2026-10-01' });
+  failDeleteFor = 'memories';
+  const r1 = await call('account.delete', 'jwt-a', {});
+  failDeleteFor = null;
+  assert.equal(r1.code, 500, 'partial failure is reported, not masked');
+  assert.ok([...tbl('memories').values()].length, 'memory retained after failed run');
+  const r2 = await call('account.delete', 'jwt-a', {});
+  assert.equal(r2.code, 200, 'retry completes');
+  assert.equal([...tbl('memories').values()].length, 0);
+  assert.equal(tbl('profiles').get('user-a'), undefined);
+  assert.equal(tbl('couples').get('couple-1').partner_a_id ?? null, null, 'caller slot cleared');
+});
+
+test('partner reactions on the deleted account responses are removed (no orphans)', async () => {
+  seedCouple();
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'A final' });
+  await call('response.submit', 'jwt-b', { letter_id: letter.$id, body: 'B final' });
+  const aResp = (await call('response.state', 'jwt-b', { letter_id: letter.$id })).data.partner.$id;
+  const react = await call('reaction.set', 'jwt-b', { response_id: aResp, kind: 'heart' });
+  assert.equal(react.code, 200, JSON.stringify(react));
+  assert.equal([...tbl('reactions').values()].length, 1);
+  const r = await call('account.delete', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal([...tbl('reactions').values()].length, 0, 'orphan reaction removed with its target');
+  assert.equal([...tbl('responses').values()].find((x) => x.author_id === 'user-a'), undefined);
 });

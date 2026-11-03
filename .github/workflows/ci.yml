@@ -67,7 +67,7 @@ jobs:
           APPWRITE_ENDPOINT: https://sgp.cloud.appwrite.io/v1
           APPWRITE_API_KEY: test-server-key
           APPWRITE_FUNCTION_PROJECT_ID: test-project
-          APPWRITE_CODE_PEPPER: test-pepper
+          APPWRITE_CODE_PEPPER: test-pepper-0123456789abcdef
 
   migration:
     name: SQL migration + authorization on real Postgres
@@ -131,6 +131,24 @@ jobs:
             exit 1
           fi
           echo "secret check OK"
+
+      - name: Fail on client-side Appwrite administrative secrets
+        run: |
+          # Server-side Appwrite credentials (API key, pepper) must never
+          # reach the client bundle or the repository. EXPO_PUBLIC_* vars are
+          # embedded in the APK by design, so any administrative secret there
+          # is a hard failure. Only synthetic placeholders in the function's
+          # own test fixtures and CI env are allowed.
+          if git grep -nE 'EXPO_PUBLIC_[A-Z_]*APPWRITE_(API_KEY|CODE_PEPPER)' -- ':!*.md'; then
+            echo "::error::administrative Appwrite secret exposed via EXPO_PUBLIC_* (would be embedded in the APK)"
+            exit 1
+          fi
+          if git grep -nE 'APPWRITE_(API_KEY|CODE_PEPPER)\s*[=:]\s*["'"'"'][^"'"'"'$'"'"']{8,}' \
+              -- ':!functions/couples-api/.env.test' ':!.github/workflows/ci.yml' ':!*.md'; then
+            echo "::error::possible real Appwrite key/pepper committed outside test fixtures"
+            exit 1
+          fi
+          echo "appwrite secret check OK"
 
       - name: Validate eas.json build profiles
         run: |

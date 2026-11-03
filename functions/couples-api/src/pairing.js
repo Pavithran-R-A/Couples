@@ -5,7 +5,7 @@
 
 import {
   createRow, updateRow, getRow, listRowsWhere, withTransaction,
-  getProfile, getCouple, sha256Hex, randomCode, now, fail,
+  getProfile, getCouple, sha256Hex, randomCode, newId, now, fail,
   INVITE_TTL_DAYS, DAY_MS,
 } from './lib.js';
 
@@ -53,14 +53,29 @@ export const handlers = {
     if (profile?.couple_id) return fail(res, 409, 'You are already paired.');
     const existingCouple = await getCouple(user.id);
     if (existingCouple) return fail(res, 409, 'You are already paired.');
-    const couple = await createRow('couples', 'unique()', { partner_a_id: user.id, created_at: now() });
-    if (couple.status >= 400) return fail(res, 500, 'Could not create the couple.');
+    // Atomic pair.start: the couple, the invitation and the profile link are
+    // three staged operations of ONE transaction — a failure anywhere rolls
+    // back all of them, so no orphan couple or half-linked profile survives.
+    // Server-generated IDs let the invitation and profile reference the
+    // couple inside the same transaction.
+    const coupleId = newId();
+    const invitationId = newId();
     const code = randomCode();
     const digest = await sha256Hex(code);
     const expires = new Date(Date.now() + INVITE_TTL_DAYS * DAY_MS).toISOString();
-    await createRow('invitations', 'unique()', { couple_id: couple.data.$id, created_by: user.id, code_digest: digest, expires_at: expires, created_at: now() });
-    await updateRow('profiles', user.id, { couple_id: couple.data.$id });
-    return res.json({ ok: true, data: { coupleId: couple.data.$id, code, expires_at: expires } });
+    const result = await withTransaction(async (apiTx) => {
+      const couple = await apiTx('POST', 'couples', coupleId, { partner_a_id: user.id, created_at: now() });
+      if (couple.status >= 400) return { ok: false, status: couple.status };
+      const invite = await apiTx('POST', 'invitations', invitationId, { couple_id: coupleId, created_by: user.id, code_digest: digest, expires_at: expires, created_at: now() });
+      if (invite.status >= 400) return { ok: false, status: invite.status };
+      const prof = await apiTx('PATCH', 'profiles', user.id, { couple_id: coupleId });
+      return { ok: prof.status < 400, status: prof.status };
+    });
+    if (!result.ok) {
+      if (result.status === 409) return fail(res, 409, 'You are already paired.');
+      return fail(res, 500, 'Could not create the pair invitation. Please try again.');
+    }
+    return res.json({ ok: true, data: { coupleId, code, expires_at: expires } });
   },
 
   async 'pair.join'({ res, user, body }) {

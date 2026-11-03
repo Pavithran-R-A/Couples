@@ -4,9 +4,31 @@
 // have answered; partner bodies are filtered server-side until reveal.
 
 import {
-  createRow, updateRow, getRow, deleteRow, listRowsWhere,
+  createRow, updateRow, getRow, deleteRow, listRowsWhere, withTransaction,
   now, fail, dayKey, safeId,
 } from './lib.js';
+
+// Mutual reveal is atomic and self-healing: when both sealed answers exist,
+// the server stamps revealed_at on BOTH rows inside one transaction. If a
+// commit fails, the stamp is simply retried by the next state/submit/reaction
+// call (idempotent), so a partial reveal never becomes permanent. Sealed
+// bodies are never written by this path — only the server-side timestamp.
+async function ensureRevealed(letterId) {
+  const all = await listRowsWhere('responses', [['equal', 'letter_id', letterId]], 2);
+  if (all.length < 2) return false;
+  if (all.every((r) => r.revealed_at)) return true;
+  const stamp = now();
+  const tx = await withTransaction(async (apiTx) => {
+    for (const r of all) {
+      const u = await apiTx('PATCH', 'responses', r.$id, { revealed_at: stamp });
+      if (u.status >= 400) return { ok: false };
+    }
+    return { ok: true };
+  });
+  if (!tx.ok) return false;
+  for (const r of all) r.revealed_at = stamp;
+  return true;
+}
 
 export const handlers = {
   async 'letter.today'({ res, user, couple }) {
@@ -37,9 +59,10 @@ export const handlers = {
     const letterId = safeId(raw, 'letter_id');
     const letter = await getRow('daily_letters', letterId);
     if (letter.status >= 400 || letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your letter.');
+    await ensureRevealed(letterId);
     const mine = await listRowsWhere('responses', [['equal', 'letter_id', letterId], ['equal', 'author_id', user.id]], 1);
     const all = await listRowsWhere('responses', [['equal', 'letter_id', letterId]], 2);
-    const both = all.length >= 2;
+    const both = all.length >= 2 && all.every((r) => r.revealed_at);
     return res.json({
       ok: true,
       data: {
@@ -66,12 +89,10 @@ export const handlers = {
       if (again.length) return res.json({ ok: true, data: { alreadySealed: true, response: again[0] } });
       return fail(res, 500, 'The answer could not be sealed.');
     }
-    const all = await listRowsWhere('responses', [['equal', 'letter_id', letterId]], 2);
-    if (all.length >= 2) {
-      const stamp = now();
-      for (const r of all) await updateRow('responses', r.$id, { revealed_at: stamp });
-    }
-    return res.json({ ok: true, data: { alreadySealed: false, response: created.data, revealed: all.length >= 2 } });
+    // Atomic mutual reveal: stamps both rows in one transaction (or retried
+    // lazily by the next call if the commit fails).
+    const revealed = await ensureRevealed(letterId);
+    return res.json({ ok: true, data: { alreadySealed: false, response: created.data, revealed } });
   },
 
   async 'reaction.set'({ res, user, couple, body }) {
@@ -82,12 +103,16 @@ export const handlers = {
     if (!['heart', 'smile', 'sparkle'].includes(kind)) return fail(res, 400, 'Unknown reaction.');
     const target = await getRow('responses', responseId);
     if (target.status >= 400) return fail(res, 404, 'That response no longer exists.');
-    if (!target.data.revealed_at) return fail(res, 403, 'That answer is not revealed yet.');
     // Couple ownership: the reaction target must belong to a letter of the
     // caller's own couple — a revealed response id from another couple is
     // still out of reach.
     const letter = await getRow('daily_letters', target.data.letter_id);
     if (letter.status >= 400 || letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your conversation.');
+    // Reveal is required before reactions; self-heals the stamp if a previous
+    // mutual-reveal commit failed, then re-reads the response.
+    await ensureRevealed(target.data.letter_id);
+    const stamped = await getRow('responses', responseId);
+    if (!stamped.data.revealed_at) return fail(res, 403, 'That answer is not revealed yet.');
     const existing = await listRowsWhere('reactions', [['equal', 'response_id', responseId], ['equal', 'author_id', user.id]], 1);
     if (existing.length && existing[0].kind === kind) return res.json({ ok: true, data: { reaction: existing[0] } });
     if (existing.length) {

@@ -25,6 +25,13 @@ const PAIRLESS = new Set([
   'account.export', 'account.delete',
 ]);
 
+// Self-service actions available BEFORE email verification. Pairing and all
+// couple data require a verified address — an unverified account can only
+// bootstrap/inspect its own profile and manage its own account.
+const SELF_SERVICE = new Set([
+  'profile.bootstrap', 'profile.get', 'pair.status', 'account.export', 'account.delete',
+]);
+
 export default async ({ req, res, log, error }) => {
   const jwt = req.headers['x-appwrite-user-jwt'];
   if (!jwt) return fail(res, 401, 'Sign in to use Couples.');
@@ -37,6 +44,9 @@ export default async ({ req, res, log, error }) => {
   const actionName = String(req.headers['x-action'] || '');
   const action = handlers[actionName];
   if (!action) return fail(res, 404, 'Unknown action.');
+  if (!caller.emailVerification && !SELF_SERVICE.has(actionName)) {
+    return fail(res, 403, 'Verify your email address to use Couples.');
+  }
   let body = {};
   try { body = typeof req.bodyJson === 'object' && req.bodyJson ? req.bodyJson : JSON.parse(req.body || '{}'); } catch { body = {}; }
 

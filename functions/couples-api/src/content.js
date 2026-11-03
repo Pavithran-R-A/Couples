@@ -191,41 +191,82 @@ export const handlers = {
   },
 
   async 'account.delete'({ res, user, couple }) {
-    // Retention: only the CALLER's own rows and membership are removed.
-    // Shared memories, letters and the companion stay available to the
-    // remaining partner; the couple row itself is removed only when the
-    // caller was its last member.
-    const del = async (table, filters) => {
-      const rows = await listRowsWhere(table, filters, 100);
-      for (const r of rows) await deleteRow(table, r.$id);
-      return rows.length;
+    // Retention policy (explicit): deletion is caller-scoped, idempotent and
+    // retryable. Only rows authored by the caller are removed; shared couple
+    // content is retained for the remaining partner; the couple and its
+    // shared content are removed only when the caller is the last member.
+    // Orphan rule: reactions pointing at the caller's responses, and
+    // adventure parts pointing at deleted couple adventures, are removed
+    // with their targets. Pagination: every list runs in pages of 100 until
+    // exhausted. Failure rule: any failed delete marks the whole request 500
+    // so the client retries — already-deleted rows stay deleted, and a
+    // retried run skips them (404 treated as success).
+    let failed = 0;
+    const delAll = async (table, filters) => {
+      for (let page = 0; page < 50; page += 1) {
+        const rows = await listRowsWhere(table, filters, 100);
+        if (!rows.length) return;
+        let pageFailures = 0;
+        for (const r of rows) {
+          const out = await deleteRow(table, r.$id);
+          if (out.status >= 400 && out.status !== 404) { pageFailures += 1; failed += 1; }
+        }
+        if (pageFailures) return; // stop retrying this table; run reports 500
+      }
     };
+    // Responses cascade: partner reactions on each response go first, so no
+    // reaction outlives its target.
+    const delResponses = async () => {
+      for (let page = 0; page < 50; page += 1) {
+        const rows = await listRowsWhere('responses', [['equal', 'author_id', user.id]], 100);
+        if (!rows.length) return;
+        let pageFailures = 0;
+        for (const r of rows) {
+          await delAll('reactions', [['equal', 'response_id', r.$id]]);
+          const out = await deleteRow('responses', r.$id);
+          if (out.status >= 400 && out.status !== 404) { pageFailures += 1; failed += 1; }
+        }
+        if (pageFailures) return;
+      }
+    };
+    // Author-scoped cleanup runs UNCONDITIONALLY — a retried deletion after
+    // a partial failure (or a run where the couple lookup fails) must still
+    // remove every caller-authored row. Only the couple-membership handling
+    // below depends on the couple being resolvable.
+    await delAll('memories', [['equal', 'author_id', user.id]]);
+    await delAll('mood_check_ins', [['equal', 'author_id', user.id]]);
+    await delAll('pocket_notes', [['equal', 'author_id', user.id]]);
+    await delAll('adventure_parts', [['equal', 'author_id', user.id]]);
+    await delResponses();
     if (couple) {
       const iAmA = couple.partner_a_id === user.id;
       const other = iAmA ? couple.partner_b_id : couple.partner_a_id;
-      await del('memories', [['equal', 'author_id', user.id]]);
-      await del('mood_check_ins', [['equal', 'author_id', user.id]]);
-      await del('pocket_notes', [['equal', 'author_id', user.id]]);
-      await del('adventure_parts', [['equal', 'author_id', user.id]]);
-      await del('reactions', [['equal', 'author_id', user.id]]);
-      await del('responses', [['equal', 'author_id', user.id]]);
       if (other) {
         // Leave-pairing: clear only the CALLER's slot so the remaining
         // partner keeps the couple, its letters and the companion intact.
         const patch = iAmA ? { partner_a_id: null } : { partner_b_id: null };
-        await updateRow('couples', couple.$id, patch);
+        const upd = await updateRow('couples', couple.$id, patch);
+        if (upd.status >= 400) failed += 1;
       } else {
-        await del('daily_letters', [['equal', 'couple_id', couple.$id]]);
-        await del('pet_states', [['equal', 'couple_id', couple.$id]]);
-        await del('milestones', [['equal', 'couple_id', couple.$id]]);
-        await del('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
-        await del('invitations', [['equal', 'couple_id', couple.$id]]);
-        await deleteRow('couples', couple.$id);
+        // Last member: the shared couple content goes with the couple.
+        // Adventure parts of a partner who deleted their account earlier are
+        // removed with their adventures so no orphan rows survive.
+        const adventures = await listRowsWhere('weekly_adventures', [['equal', 'couple_id', couple.$id]], 100);
+        for (const a of adventures) await delAll('adventure_parts', [['equal', 'adventure_id', a.$id]]);
+        await delAll('daily_letters', [['equal', 'couple_id', couple.$id]]);
+        await delAll('pet_states', [['equal', 'couple_id', couple.$id]]);
+        await delAll('milestones', [['equal', 'couple_id', couple.$id]]);
+        await delAll('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
+        await delAll('invitations', [['equal', 'couple_id', couple.$id]]);
+        const out = await deleteRow('couples', couple.$id);
+        if (out.status >= 400 && out.status !== 404) failed += 1;
       }
     }
-    await del('responses', [['equal', 'author_id', user.id]]);
-    await deleteRow('profiles', user.id);
-    await fetch(`${ENDPOINT}/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: jsonHeaders() });
+    const prof = await deleteRow('profiles', user.id);
+    if (prof.status >= 400 && prof.status !== 404) failed += 1;
+    const auth = await fetch(`${ENDPOINT}/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: jsonHeaders() });
+    if (!auth.ok && auth.status !== 404) failed += 1;
+    if (failed) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     return res.json({ ok: true, data: { deleted: true } });
   },
 

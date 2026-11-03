@@ -25,6 +25,9 @@ const DB = contract.database.database_id;
 const DB_NAME = contract.database.name;
 
 let failures = 0;
+const unsupported = [];
+// Index types accepted by `appwrite tablesdb create-index` (CLI help text).
+const KNOWN_INDEX_TYPES = new Set(['key', 'fulltext', 'unique', 'spatial', 'trigram']);
 function run(args, { allowFail = false } = {}) {
   if (dryRun) {
     console.log('DRY:', 'appwrite', args.join(' '));
@@ -64,13 +67,20 @@ async function waitColumns(tableId, keys) {
   return false;
 }
 
+// Column commands verified against the installed Appwrite CLI (`appwrite
+// tablesdb --help`): text and longtext are separate commands with identical
+// flag shapes (no --size flag); varchar/string carries --size.
 function columnArgs(tableId, col) {
   const base = ['--database-id', DB, '--table-id', tableId, '--key', col.key, '--required', String(Boolean(col.required))];
   switch (col.type) {
     case 'varchar':
       return ['tablesdb', 'create-string-column', ...base, '--size', String(col.size ?? 256)];
+    case 'text':
+      return ['tablesdb', 'create-text-column', ...base];
     case 'longtext':
       return ['tablesdb', 'create-longtext-column', ...base];
+    case 'mediumtext':
+      return ['tablesdb', 'create-mediumtext-column', ...base];
     case 'datetime':
       return ['tablesdb', 'create-datetime-column', ...base];
     case 'integer':
@@ -84,6 +94,7 @@ function columnArgs(tableId, col) {
     case 'enum':
       return ['tablesdb', 'create-enum-column', ...base, '--elements', ...(col.elements ?? [])];
     default:
+      unsupported.push(`column type "${col.type}" (${tableId}.${col.key})`);
       console.error(`UNKNOWN COLUMN TYPE: ${col.type} (${tableId}.${col.key}) — skipped`);
       failures += 1;
       return null;
@@ -139,6 +150,12 @@ for (const table of contract.tables) {
   }
 
   for (const idx of table.indexes ?? []) {
+    if (!KNOWN_INDEX_TYPES.has(idx.type)) {
+      unsupported.push(`index type "${idx.type}" (${tid}.${idx.key})`);
+      console.error(`UNKNOWN INDEX TYPE: ${idx.type} (${tid}.${idx.key}) — skipped`);
+      failures += 1;
+      continue;
+    }
     const out = run(
       ['tablesdb', 'create-index', '--database-id', DB, '--table-id', tid, '--key', idx.key,
         '--type', idx.type, '--attributes', ...(idx.attributes ?? [])],
@@ -155,5 +172,9 @@ for (const table of contract.tables) {
   }
 }
 
+if (unsupported.length) {
+  console.error(`UNSUPPORTED CONTRACT ENTRIES (${unsupported.length}) — fix before deploying:`);
+  for (const u of unsupported) console.error(`  - ${u}`);
+}
 console.log(`DEPLOY ${dryRun ? '(dry-run)' : 'COMPLETE'}: failures=${failures}`);
 process.exit(failures ? 1 : 0);

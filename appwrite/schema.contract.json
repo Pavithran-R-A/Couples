@@ -1,0 +1,774 @@
+{
+  "status": "PROPOSED_NOT_PROVISIONED",
+  "project_id": "6ae6e1be00021a01c9ec",
+  "endpoint": "https://sgp.cloud.appwrite.io/v1",
+  "database": {
+    "database_id": "couples_main",
+    "name": "Couples Main",
+    "specification": "serverless"
+  },
+  "security": {
+    "default_table_permissions": [],
+    "row_security": false,
+    "access": "Privileged Appwrite Function only. All read/write gates enforce verified caller id and couple membership",
+    "no_direct_client_access": true,
+    "no_local_user_content": true
+  },
+  "tables": [
+    {
+      "table_id": "profiles",
+      "name": "profiles",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "email",
+          "type": "varchar",
+          "required": true,
+          "size": 254
+        },
+        {
+          "key": "display_name",
+          "type": "varchar",
+          "required": true,
+          "size": 128
+        },
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": false,
+          "size": 36
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_couple",
+          "type": "key",
+          "attributes": [
+            "couple_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "couples",
+      "name": "couples",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "partner_a_id",
+          "type": "varchar",
+          "required": false,
+          "size": 36
+        },
+        {
+          "key": "partner_b_id",
+          "type": "varchar",
+          "required": false,
+          "size": 36
+        },
+        {
+          "key": "anniversary",
+          "type": "varchar",
+          "required": false,
+          "size": 10
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "partner_a_unique",
+          "type": "unique",
+          "attributes": [
+            "partner_a_id"
+          ]
+        },
+        {
+          "key": "partner_b_unique",
+          "type": "unique",
+          "attributes": [
+            "partner_b_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "invitations",
+      "name": "invitations",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "created_by",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "code_digest",
+          "type": "varchar",
+          "required": true,
+          "size": 64
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "consumed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "code_digest_unique",
+          "type": "unique",
+          "attributes": [
+            "code_digest"
+          ]
+        },
+        {
+          "key": "creator_expiry",
+          "type": "key",
+          "attributes": [
+            "created_by",
+            "expires_at"
+          ]
+        },
+        {
+          "key": "by_couple_creator",
+          "type": "key",
+          "attributes": [
+            "couple_id",
+            "created_by"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "question_bank",
+      "name": "question_bank",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "category",
+          "type": "varchar",
+          "required": true,
+          "size": 64
+        },
+        {
+          "key": "text",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "table_id": "daily_letters",
+      "name": "daily_letters",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "letter_date",
+          "type": "varchar",
+          "required": true,
+          "size": 10
+        },
+        {
+          "key": "question_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "question_text",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "category",
+          "type": "varchar",
+          "required": true,
+          "size": 64
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "couple_day_unique",
+          "type": "unique",
+          "attributes": [
+            "couple_id",
+            "letter_date"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "responses",
+      "name": "responses",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "letter_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revealed_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "letter_author_unique",
+          "type": "unique",
+          "attributes": [
+            "letter_id",
+            "author_id"
+          ]
+        },
+        {
+          "key": "by_letter",
+          "type": "key",
+          "attributes": [
+            "letter_id"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "reactions",
+      "name": "reactions",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "response_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "kind",
+          "type": "varchar",
+          "required": true,
+          "size": 16
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "response_author_unique",
+          "type": "unique",
+          "attributes": [
+            "response_id",
+            "author_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "pet_states",
+      "name": "pet_states",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "affection",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "mood",
+          "type": "varchar",
+          "required": true,
+          "size": 32
+        },
+        {
+          "key": "last_interaction_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "last_watered_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "last_sunlit_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "couple_unique",
+          "type": "unique",
+          "attributes": [
+            "couple_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "memories",
+      "name": "memories",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "title",
+          "type": "varchar",
+          "required": true,
+          "size": 120
+        },
+        {
+          "key": "note",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "photo_file_id",
+          "type": "varchar",
+          "required": false,
+          "size": 36
+        },
+        {
+          "key": "memory_date",
+          "type": "varchar",
+          "required": true,
+          "size": 10
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_couple_memory",
+          "type": "key",
+          "attributes": [
+            "couple_id",
+            "memory_date"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "milestones",
+      "name": "milestones",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "kind",
+          "type": "varchar",
+          "required": true,
+          "size": 48
+        },
+        {
+          "key": "label",
+          "type": "varchar",
+          "required": true,
+          "size": 160
+        },
+        {
+          "key": "achieved_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "couple_kind_unique",
+          "type": "unique",
+          "attributes": [
+            "couple_id",
+            "kind"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "mood_check_ins",
+      "name": "mood_check_ins",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "emoji",
+          "type": "varchar",
+          "required": true,
+          "size": 32
+        },
+        {
+          "key": "note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_couple_mood",
+          "type": "key",
+          "attributes": [
+            "couple_id",
+            "created_at"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "pocket_notes",
+      "name": "pocket_notes",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "read_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_couple_note",
+          "type": "key",
+          "attributes": [
+            "couple_id",
+            "created_at"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "weekly_adventures",
+      "name": "weekly_adventures",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "couple_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "week_of",
+          "type": "varchar",
+          "required": true,
+          "size": 10
+        },
+        {
+          "key": "kind",
+          "type": "varchar",
+          "required": true,
+          "size": 40
+        },
+        {
+          "key": "title",
+          "type": "varchar",
+          "required": true,
+          "size": 180
+        },
+        {
+          "key": "detail",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "couple_week_unique",
+          "type": "unique",
+          "attributes": [
+            "couple_id",
+            "week_of"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "adventure_parts",
+      "name": "adventure_parts",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "adventure_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "entry",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "adventure_author_unique",
+          "type": "unique",
+          "attributes": [
+            "adventure_id",
+            "author_id"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "attributes": [
+            "author_id"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "idempotency_requests",
+      "name": "idempotency_requests",
+      "permissions": [],
+      "row_security": false,
+      "enabled": true,
+      "columns": [
+        {
+          "key": "actor_id",
+          "type": "varchar",
+          "required": true,
+          "size": 36
+        },
+        {
+          "key": "operation",
+          "type": "varchar",
+          "required": true,
+          "size": 48
+        },
+        {
+          "key": "request_key",
+          "type": "varchar",
+          "required": true,
+          "size": 64
+        },
+        {
+          "key": "result_id",
+          "type": "varchar",
+          "required": false,
+          "size": 36
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "actor_op_key_unique",
+          "type": "unique",
+          "attributes": [
+            "actor_id",
+            "operation",
+            "request_key"
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "This is a proposed schema, not proof of cloud provisioning.",
+    "Native Appwrite row metadata $id is the record identifier; profile row IDs match auth user ID, pet_states row IDs match couple ID.",
+    "Date-only values use YYYY-MM-DD varchar(10). All date-only input must be validated server-side.",
+    "All server writes validate input lengths, membership, request replay and immutable response/adventure part semantics.",
+    "Question bank content from historical migration 0007 requires separate audited seed, not fabricated users.",
+    "Private memory photo bucket is a later resource and must be default-deny."
+  ]
+}

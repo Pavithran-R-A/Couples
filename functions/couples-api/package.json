@@ -1,0 +1,14 @@
+{
+  "name": "couples-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Couples security Function for Appwrite — verified-caller actions over default-deny TablesDB. Zero npm dependencies.",
+  "main": "src/main.js",
+  "scripts": {
+    "test": "node --env-file=.env.test --test test/main.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

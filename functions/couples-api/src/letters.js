@@ -4,7 +4,7 @@
 // have answered; partner bodies are filtered server-side until reveal.
 
 import {
-  createRow, updateRow, getRow, deleteRow, listRowsWhere, withTransaction,
+  createRow, updateRow, getRow, deleteRow, listRowsWhere, listAllRows, withTransaction,
   now, fail, dayKey, safeId,
 } from './lib.js';
 
@@ -133,5 +133,28 @@ export const handlers = {
     const created = await createRow('reactions', 'unique()', { response_id: responseId, author_id: user.id, kind, created_at: now() });
     if (created.status >= 400) return fail(res, 500, 'The reaction could not be saved.');
     return res.json({ ok: true, data: created.data });
+  },
+
+  // Letter history for the couple — the full archive, stably ordered.
+  async 'letter.history'({ res, couple }) {
+    const letters = await listAllRows('daily_letters', [['equal', 'couple_id', couple.$id]]);
+    return res.json({ ok: true, data: { letters } });
+  },
+
+  // Reactions on a letter's responses (only visible to the couple).
+  async 'reaction.list'({ res, couple, body }) {
+    const raw = String(body.letter_id || '');
+    if (!raw) return fail(res, 400, 'Missing letter.');
+    const letterId = safeId(raw, 'letter_id');
+    const letter = await getRow('daily_letters', letterId);
+    if (letter.status === 404) return fail(res, 403, 'Not your letter.');
+    if (letter.status >= 400) return fail(res, 500, 'The letter could not be verified.');
+    if (letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your letter.');
+    const responses = await listRowsWhere('responses', [['equal', 'letter_id', letterId]], 2);
+    const reactions = [];
+    for (const r of responses) {
+      reactions.push(...await listAllRows('reactions', [['equal', 'response_id', r.$id]]));
+    }
+    return res.json({ ok: true, data: { reactions } });
   },
 };

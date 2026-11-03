@@ -17,6 +17,11 @@ import { handlers as content } from './content.js';
 
 const handlers = { ...pairing, ...letters, ...content };
 
+// Every action the Function implements. The BackendAdapter compatibility
+// map (services/AppwriteActionMap.ts) asserts against this list, so a
+// mapped action that disappears from the Function fails CI.
+export const ACTION_NAMES = Object.keys(handlers);
+
 // Actions that are meaningful without a couple (onboarding, pairing,
 // lifecycle). Every other action is deny-by-default until the caller is
 // paired, so an unpaired or deleted account cannot reach couple data.

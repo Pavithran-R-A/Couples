@@ -132,6 +132,13 @@ export function qOffset(n) {
   return JSON.stringify({ method: 'offset', values: [n] });
 }
 
+export function qCursorAfter(id) {
+  // Official stable pagination: cursorAfter takes the last row's $id —
+  // immune to the skip/duplicate hazards of offset pagination under
+  // concurrent writes (see Appwrite TablesDB pagination docs).
+  return JSON.stringify({ method: 'cursorAfter', values: [id] });
+}
+
 export function qOrderAsc(attr) {
   return JSON.stringify({ method: 'orderAsc', attribute: attr });
 }
@@ -169,17 +176,26 @@ export async function listRowsWhere(table, filters, limit = 100, txnId, extraQue
   return out.rows;
 }
 
-// Exhaustive, stably ordered listing (orderAsc on $id + offset pages) so
-// exports and cleanups see EVERY matching row, not only the first page.
-// A hard page guard bounds runaway loops.
+// Exhaustive, stably ordered listing using CURSOR pagination
+// (orderAsc($id) + cursorAfter the last seen $id) so exports and cleanups
+// see EVERY matching row without offset skip/duplicate hazards, and without
+// any fixed truncation point. A safety ceiling (configurable for tests via
+// COUPLES_PAGINATION_CEILING) bounds runaway loops; hitting it THROWS so a
+// caller can never mistake a truncated result for a complete one.
 export async function listAllRows(table, filters, pageSize = 100) {
+  const ceiling = Number(process.env.COUPLES_PAGINATION_CEILING || 500);
   const all = [];
-  for (let page = 0; page < 100; page += 1) {
-    const rows = await listRowsWhere(table, filters, pageSize, undefined, [qOrderAsc('$id'), qOffset(page * pageSize)]);
+  let cursor = null;
+  for (let page = 0; page < ceiling; page += 1) {
+    const extras = [qOrderAsc('$id')];
+    if (cursor) extras.push(qCursorAfter(cursor));
+    const rows = await listRowsWhere(table, filters, pageSize, undefined, extras);
+    if (!rows.length) return all; // explicit exhaustion
     all.push(...rows);
-    if (rows.length < pageSize) return all;
+    if (rows.length < pageSize) return all; // final partial page
+    cursor = rows[rows.length - 1].$id;
   }
-  return all;
+  throw new Error(`listAllRows ${table}: pagination ceiling (${ceiling} pages) exceeded — refusing to return incomplete data`);
 }
 
 // Atomic server-side column increment (official endpoint, sdk-for-web

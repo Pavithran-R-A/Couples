@@ -112,16 +112,20 @@ function applyFilters(rows, queries) {
   let limit = rows.length;
   let offset = 0;
   let orderAttr = null;
+  let cursorAfterId = null;
   for (const q of queries) {
     let parsed;
     try { parsed = JSON.parse(q); } catch { throw new Error(`malformed query (not JSON): ${q}`); }
-    // orderAsc carries { method, attribute } with no values (the SDK omits
-    // undefined); every other supported method requires a values array.
+    // orderAsc and cursorAfter carry no attribute (orderAsc has no values;
+    // the SDK omits undefined); every other supported method requires a
+    // values array.
     const needsValues = parsed && parsed.method !== 'orderAsc';
+    const needsAttribute = parsed && parsed.method !== 'limit' && parsed.method !== 'offset'
+      && parsed.method !== 'orderAsc' && parsed.method !== 'cursorAfter';
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
       || typeof parsed.method !== 'string'
       || (needsValues && !Array.isArray(parsed.values))
-      || (parsed.method !== 'limit' && parsed.method !== 'orderAsc' && parsed.method !== 'offset' && typeof parsed.attribute !== 'string')) {
+      || (needsAttribute && typeof parsed.attribute !== 'string')) {
       throw new Error(`unsupported or malformed query: ${q}`);
     }
     if (parsed.method === 'equal') {
@@ -132,10 +136,13 @@ function applyFilters(rows, queries) {
       offset = Number(parsed.values[0]) || 0;
     } else if (parsed.method === 'orderAsc') {
       orderAttr = parsed.attribute;
+    } else if (parsed.method === 'cursorAfter') {
+      cursorAfterId = String(parsed.values[0]);
     } else {
       throw new Error(`unsupported query method: ${parsed.method}`);
     }
   }
+  if (cursorAfterId !== null) out = out.filter((r) => String(r.$id) > cursorAfterId);
   if (orderAttr) out = [...out].sort((a, b) => String(a[orderAttr]).localeCompare(String(b[orderAttr])));
   return out.slice(offset, offset + limit);
 }
@@ -1263,6 +1270,200 @@ test('calendar overflow dates are rejected', async () => {
   }
   const ok = await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: '2028-02-29' });
   assert.equal(ok.code, 200, 'real leap day accepted');
+});
+
+// ---- Pagination ceilings fail closed (sixth-review P0) -------------------------
+
+test('deletion hitting the pagination ceiling preserves credentials', async () => {
+  seedCouple();
+  for (let i = 0; i < 250; i += 1) {
+    const id = `moodx-${String(i).padStart(3, '0')}`;
+    tbl('mood_check_ins').set(id, { $id: id, couple_id: 'couple-1', author_id: 'user-b', emoji: 'e', note: '', created_at: now() });
+  }
+  process.env.COUPLES_PAGINATION_CEILING = '2'; // 250 rows / 100 per page = 3 pages > 2
+  const r = await call('account.delete', 'jwt-b', {});
+  delete process.env.COUPLES_PAGINATION_CEILING;
+  assert.equal(r.code, 500, 'a truncated cleanup aborts the run');
+  assert.ok(users['user-b'], 'credentials preserved at the ceiling');
+  assert.ok(tbl('profiles').get('user-b'), 'profile preserved');
+  const remaining = [...tbl('mood_check_ins').values()].filter((m) => m.author_id === 'user-b').length;
+  assert.ok(remaining > 0 && remaining < 250, `ceiling stopped mid-cleanup (${remaining} of 250 remain) instead of pretending exhaustion`);
+  const retry = await call('account.delete', 'jwt-b', {});
+  assert.equal(retry.code, 200, 'retry with the normal ceiling completes');
+  assert.equal([...tbl('mood_check_ins').values()].filter((m) => m.author_id === 'user-b').length, 0, 'cursor pagination reaches full exhaustion');
+  assert.equal(users['user-b'], undefined);
+});
+
+test('export hitting the pagination ceiling fails instead of truncating', async () => {
+  seedCouple();
+  for (let i = 0; i < 250; i += 1) {
+    const id = `memy-${String(i).padStart(3, '0')}`;
+    tbl('memories').set(id, { $id: id, couple_id: 'couple-1', author_id: 'user-a', title: `T${i}`, note: '', memory_date: '2026-01-01', created_at: now() });
+  }
+  process.env.COUPLES_PAGINATION_CEILING = '2';
+  const bad = await call('account.export', 'jwt-a', {});
+  delete process.env.COUPLES_PAGINATION_CEILING;
+  assert.equal(bad.code, 500, 'an incomplete export is an error, never a partial success');
+  const ok = await call('account.export', 'jwt-a', {});
+  assert.equal(ok.code, 200);
+  assert.equal(ok.data.memories.length, 250, 'full export once unbounded');
+});
+
+test('interrupted cleanup list preserves credentials and retries cleanly', async () => {
+  seedCouple();
+  await call('memory.create', 'jwt-a', { title: 'keep', note: '', memory_date: '2026-10-01' });
+  failListOnCall = { table: 'memories', status: 500, n: 1 };
+  const r = await call('account.delete', 'jwt-a', {});
+  failListOnCall = null;
+  assert.equal(r.code, 500, 'interrupted pagination is an error');
+  assert.ok(users['user-a'], 'credentials preserved');
+  assert.ok([...tbl('memories').values()].length, 'row retained');
+  const retry = await call('account.delete', 'jwt-a', {});
+  assert.equal(retry.code, 200);
+  assert.equal([...tbl('memories').values()].length, 0);
+  assert.equal(users['user-a'], undefined);
+});
+
+test('lumi warmth clamps at the maximum without failure', async () => {
+  seedCouple();
+  tbl('pet_states').set('pet-cap', { $id: 'pet-cap', couple_id: 'couple-1', affection: 98, mood: 'cared' });
+  const first = await call('lumi.care', 'jwt-a', { action: 'play' });
+  assert.equal(first.code, 200, JSON.stringify(first));
+  assert.equal(first.data.pet.affection, 100, '98 + 4 clamps to 100');
+  const second = await call('lumi.care', 'jwt-a', { action: 'play' });
+  assert.equal(second.code, 200, 'near-cap care still succeeds');
+  assert.equal(second.data.pet.affection, 100, 'clamped, never overflows');
+});
+
+// ---- BackendAdapter gap actions (M2) --------------------------------------------
+
+test('partner.get returns the partner display name and denies outsiders', async () => {
+  seedCouple();
+  const r = await call('partner.get', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal(r.data.partner.id, 'user-b');
+  assert.equal(r.data.partner.displayName, 'B');
+  assert.ok(r.data.partner.togetherSince, 'togetherSince present');
+  // The action is caller-couple scoped by construction: C (in their own
+  // couple) sees only their own couple — never A/B's data.
+  await pairC();
+  const outsider = await call('partner.get', 'jwt-c', {});
+  assert.equal(outsider.code, 200);
+  assert.equal(outsider.data.partner, null, 'outsider sees only their own (empty) couple');
+  assert.equal(JSON.stringify(outsider).includes('user-a'), false);
+});
+
+test('partner.unlink leaves the relationship without deleting the account', async () => {
+  seedCouple();
+  await call('memory.create', 'jwt-a', { title: 'stays', note: '', memory_date: '2026-10-01' });
+  tbl('invitations').set('inv-live', { $id: 'inv-live', couple_id: 'couple-1', created_by: 'user-a', code_digest: 'x', expires_at: new Date(Date.now() + DAY_MS).toISOString(), created_at: now() });
+  const r = await call('partner.unlink', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal(r.data.unlinked, true);
+  assert.equal(r.data.partnerKeptCouple, true);
+  assert.equal(tbl('couples').get('couple-1').partner_a_id ?? null, null, 'caller slot cleared');
+  assert.equal(tbl('couples').get('couple-1').partner_b_id, 'user-b', 'partner keeps the couple');
+  assert.equal(tbl('profiles').get('user-a').couple_id ?? null, null, 'profile unlinked');
+  assert.ok(users['user-a'], 'auth account kept');
+  assert.ok(tbl('profiles').get('user-a'), 'profile row kept');
+  assert.equal([...tbl('invitations').values()].find((i) => i.created_by === 'user-a'), undefined, 'live invite revoked');
+  const partnerView = await call('memory.list', 'jwt-b', {});
+  assert.ok(partnerView.data.memories.some((m) => m.title === 'stays'), 'authored content retained for the partner');
+  const fresh = await call('pair.start', 'jwt-a', {});
+  assert.equal(fresh.code, 200, 'unlinked user can pair anew');
+});
+
+test('last member unlink tears down the empty couple', async () => {
+  seedCouple();
+  tbl('couples').get('couple-1').partner_b_id = null;
+  tbl('profiles').delete('user-b');
+  await call('letter.today', 'jwt-a', {});
+  const r = await call('partner.unlink', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal(r.data.partnerKeptCouple, false);
+  assert.equal(tbl('couples').get('couple-1'), undefined, 'empty couple removed');
+  assert.equal([...tbl('daily_letters').values()].length, 0, 'shared letters removed with the couple');
+  assert.equal(tbl('profiles').get('user-a').couple_id ?? null, null);
+  const fresh = await call('pair.start', 'jwt-a', {});
+  assert.equal(fresh.code, 200);
+});
+
+test('letter.history returns the couple archive and denies outsiders', async () => {
+  seedCouple();
+  await call('letter.today', 'jwt-a', {});
+  tbl('daily_letters').set('let-old', { $id: 'let-old', couple_id: 'couple-1', letter_date: '2026-10-01', question_id: 'q1', question_text: 'Q', category: 'Everyday', created_at: now() });
+  const r = await call('letter.history', 'jwt-b', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal(r.data.letters.length, 2);
+  // Isolation: C's history contains only C's own couple — never A/B letters.
+  await pairC();
+  const outsider = await call('letter.history', 'jwt-c', {});
+  assert.equal(outsider.code, 200);
+  assert.equal(outsider.data.letters.some((l) => l.couple_id === 'couple-1'), false, 'no cross-couple letters');
+});
+
+test('reaction.list returns the couple reactions and denies outsiders', async () => {
+  seedCouple();
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'A' });
+  await call('response.submit', 'jwt-b', { letter_id: letter.$id, body: 'B' });
+  const target = (await call('response.state', 'jwt-b', { letter_id: letter.$id })).data.partner.$id;
+  await call('reaction.set', 'jwt-b', { response_id: target, kind: 'heart' });
+  const r = await call('reaction.list', 'jwt-a', { letter_id: letter.$id });
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal(r.data.reactions.length, 1);
+  assert.equal(r.data.reactions[0].kind, 'heart');
+  await pairC();
+  const denied = await call('reaction.list', 'jwt-c', { letter_id: letter.$id });
+  assert.equal(denied.code, 403);
+});
+
+test('note.markRead stamps read_at idempotently and fails honestly', async () => {
+  seedCouple();
+  const note = (await call('note.add', 'jwt-a', { body: 'hello' })).data.note;
+  const r1 = await call('note.markRead', 'jwt-b', { id: note.$id });
+  assert.equal(r1.code, 200, JSON.stringify(r1));
+  assert.equal(r1.data.alreadyRead, false);
+  assert.ok(r1.data.note.read_at, 'read_at stamped');
+  const r2 = await call('note.markRead', 'jwt-b', { id: note.$id });
+  assert.equal(r2.code, 200);
+  assert.equal(r2.data.alreadyRead, true, 'second mark is genuinely already-done');
+  await pairC();
+  const denied = await call('note.markRead', 'jwt-c', { id: note.$id });
+  assert.equal(denied.code, 403);
+  failPatchFor = 'pocket_notes';
+  const other = (await call('note.add', 'jwt-a', { body: 'two' })).data.note;
+  const bad = await call('note.markRead', 'jwt-b', { id: other.$id });
+  failPatchFor = null;
+  assert.equal(bad.code, 500, 'failed stamp is an error, not success');
+});
+
+test('stats.get reports couple statistics', async () => {
+  seedCouple();
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'A' });
+  await call('response.submit', 'jwt-b', { letter_id: letter.$id, body: 'B' });
+  await call('memory.create', 'jwt-a', { title: 'one', note: '', memory_date: '2026-10-01' });
+  const r = await call('stats.get', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r));
+  assert.equal(r.data.lettersCompleted, 1, 'both partners answered one letter');
+  assert.equal(r.data.memoriesCount, 1);
+  assert.equal(r.data.lettersCount, 1);
+  assert.ok(r.data.daysTogether >= 0);
+});
+
+test('memory.update accepts and clears photo references', async () => {
+  seedCouple();
+  const created = await call('memory.create', 'jwt-a', { title: 'pic', note: '', memory_date: '2026-10-01' });
+  const id = created.data.memory.$id;
+  const set = await call('memory.update', 'jwt-a', { id, photo_file_id: 'photo-abc-123' });
+  assert.equal(set.code, 200, JSON.stringify(set));
+  assert.equal(set.data.memory.photo_file_id, 'photo-abc-123');
+  const bad = await call('memory.update', 'jwt-a', { id, photo_file_id: 'bad id!' });
+  assert.equal(bad.code, 400);
+  const clear = await call('memory.update', 'jwt-a', { id, photo_file_id: null });
+  assert.equal(clear.code, 200);
+  assert.equal(clear.data.memory.photo_file_id ?? null, null);
 });
 
 test('memory mutations report server failures', async () => {

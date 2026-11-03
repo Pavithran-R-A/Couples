@@ -5,6 +5,7 @@
 
 import {
   createRow, updateRow, getRow, deleteRow, listRowsWhere, listAllRows, withTransaction,
+  qOrderAsc, qCursorAfter,
   now, weekKey, fail, safeId, WARMTH_STEP, WARMTH_MAX,
   getCouple, getProfile, ENDPOINT, PROJECT, API_KEY,
 } from './lib.js';
@@ -18,6 +19,54 @@ async function ensurePet(coupleId) {
   const c = await createRow('pet_states', 'unique()', { couple_id: coupleId, affection: 40, mood: 'happy to see you' });
   if (c.status >= 400) throw new Error(`pet create failed: HTTP ${c.status}`);
   return c.data;
+}
+
+// Cursor-based deletion to EXPLICIT exhaustion (orderAsc $id +
+// cursorAfter), never a fixed page cap: hitting the safety ceiling THROWS
+// so a truncated cleanup can never be followed by credential deletion. The
+// ceiling is configurable for tests via COUPLES_PAGINATION_CEILING.
+// Returns the number of delete failures for the caller to account.
+async function deleteAllRows(table, filters) {
+  const ceiling = Number(process.env.COUPLES_PAGINATION_CEILING || 500);
+  let cursor = null;
+  let failures = 0;
+  for (let page = 0; page < ceiling; page += 1) {
+    const extras = [qOrderAsc('$id')];
+    if (cursor) extras.push(qCursorAfter(cursor));
+    const rows = await listRowsWhere(table, filters, 100, undefined, extras);
+    if (!rows.length) return failures; // explicit exhaustion
+    let pageFailures = 0;
+    for (const r of rows) {
+      const out = await deleteRow(table, r.$id);
+      if (out.status >= 400 && out.status !== 404) { pageFailures += 1; failures += 1; }
+    }
+    if (pageFailures) return failures; // stop retrying this table; caller reports 500
+    cursor = rows[rows.length - 1].$id;
+  }
+  throw new Error(`deletion pagination ceiling exceeded for ${table} — refusing to continue toward credential deletion`);
+}
+
+// Responses cascade: partner reactions on each response go first, so no
+// reaction outlives its target.
+async function deleteResponsesCascade(userId) {
+  const ceiling = Number(process.env.COUPLES_PAGINATION_CEILING || 500);
+  let cursor = null;
+  let failures = 0;
+  for (let page = 0; page < ceiling; page += 1) {
+    const extras = [qOrderAsc('$id')];
+    if (cursor) extras.push(qCursorAfter(cursor));
+    const rows = await listRowsWhere('responses', [['equal', 'author_id', userId]], 100, undefined, extras);
+    if (!rows.length) return failures;
+    let pageFailures = 0;
+    for (const r of rows) {
+      failures += await deleteAllRows('reactions', [['equal', 'response_id', r.$id]]);
+      const out = await deleteRow('responses', r.$id);
+      if (out.status >= 400 && out.status !== 404) { pageFailures += 1; failures += 1; }
+    }
+    if (pageFailures) return failures;
+    cursor = rows[rows.length - 1].$id;
+  }
+  throw new Error('deletion pagination ceiling exceeded for responses — refusing to continue toward credential deletion');
 }
 
 export const handlers = {
@@ -93,6 +142,16 @@ export const handlers = {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.memory_date))) return fail(res, 400, 'The date needs the YYYY-MM-DD shape.');
       patch.memory_date = String(body.memory_date);
     }
+    if (body.photo_file_id !== undefined) {
+      if (body.photo_file_id === null) {
+        patch.photo_file_id = null;
+      } else {
+        const fileId = String(body.photo_file_id);
+        // Appwrite file IDs: [A-Za-z0-9][A-Za-z0-9_.-]{0,35}.
+        if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,35}$/.test(fileId)) return fail(res, 400, 'That photo reference does not look right.');
+        patch.photo_file_id = fileId;
+      }
+    }
     const upd = await updateRow('memories', id, patch);
     if (upd.status >= 400) return fail(res, 500, 'The memory could not be saved.');
     return res.json({ ok: true, data: { memory: upd.data } });
@@ -140,6 +199,21 @@ export const handlers = {
   async 'note.list'({ res, user, couple }) {
     const rows = await listRowsWhere('pocket_notes', [['equal', 'couple_id', couple.$id]], 100);
     return res.json({ ok: true, data: { notes: rows, viewerId: user.id } });
+  },
+
+  // Marks a couple note as read by the recipient (idempotent).
+  async 'note.markRead'({ res, user, couple, body }) {
+    const raw = String(body.id || '');
+    if (!raw) return fail(res, 400, 'Missing note.');
+    const id = safeId(raw, 'id');
+    const row = await getRow('pocket_notes', id);
+    if (row.status === 404) return fail(res, 404, 'That note no longer exists.');
+    if (row.status >= 400) return fail(res, 500, 'The note could not be verified.');
+    if (row.data.couple_id !== couple.$id) return fail(res, 403, 'Not your note.');
+    if (row.data.read_at) return res.json({ ok: true, data: { note: row.data, alreadyRead: true } });
+    const upd = await updateRow('pocket_notes', id, { read_at: now() });
+    if (upd.status >= 400) return fail(res, 500, 'The note could not be marked read.');
+    return res.json({ ok: true, data: { note: upd.data, alreadyRead: false } });
   },
 
   async 'milestone.list'({ res, couple }) {
@@ -216,6 +290,81 @@ export const handlers = {
     return res.json({ ok: true, data: { alreadyKept: false, part: created.data } });
   },
 
+  // Partner profile for the couple screen (display name only — no emails).
+  async 'partner.get'({ res, user, couple }) {
+    const other = couple.partner_a_id === user.id ? couple.partner_b_id : couple.partner_a_id;
+    if (!other) return res.json({ ok: true, data: { partner: null } });
+    const row = await getRow('profiles', other);
+    if (row.status === 404) return res.json({ ok: true, data: { partner: null } });
+    if (row.status >= 400) return fail(res, 500, 'The partner profile could not be read.');
+    return res.json({ ok: true, data: { partner: { id: row.data.$id, displayName: row.data.display_name, togetherSince: couple.created_at } } });
+  },
+
+  // Leaves the relationship WITHOUT deleting the account: live invitations
+  // of the caller are revoked, the caller's couple slot is cleared and the
+  // profile is unlinked. Authored content, the profile row and the auth
+  // account are all kept. A last member leaving tears down the empty couple
+  // with its shared content (same rules as account deletion's last-member
+  // branch), so no memberless couple is orphaned.
+  async 'partner.unlink'({ res, user, couple }) {
+    const iAmA = couple.partner_a_id === user.id;
+    const other = iAmA ? couple.partner_b_id : couple.partner_a_id;
+    let failed = 0;
+    if (other) {
+      failed += await deleteAllRows('invitations', [['equal', 'couple_id', couple.$id], ['equal', 'created_by', user.id]]);
+      const patch = iAmA ? { partner_a_id: null } : { partner_b_id: null };
+      const upd = await updateRow('couples', couple.$id, patch);
+      if (upd.status >= 400) failed += 1;
+    } else {
+      // Last member: shared content goes with the couple, removed while the
+      // caller is still a member so failures stay retryable.
+      const adventures = await listAllRows('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
+      for (const a of adventures) {
+        failed += await deleteAllRows('adventure_parts', [['equal', 'adventure_id', a.$id]]);
+      }
+      failed += await deleteAllRows('daily_letters', [['equal', 'couple_id', couple.$id]]);
+      failed += await deleteAllRows('pet_states', [['equal', 'couple_id', couple.$id]]);
+      failed += await deleteAllRows('milestones', [['equal', 'couple_id', couple.$id]]);
+      failed += await deleteAllRows('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
+      failed += await deleteAllRows('invitations', [['equal', 'couple_id', couple.$id]]);
+      if (!failed) {
+        const out = await deleteRow('couples', couple.$id);
+        if (out.status >= 400 && out.status !== 404) failed += 1;
+      }
+    }
+    if (failed) return fail(res, 500, 'The unlink could not be completed. Please retry.');
+    const prof = await updateRow('profiles', user.id, { couple_id: null });
+    if (prof.status >= 400 && prof.status !== 404) return fail(res, 500, 'The unlink could not be completed. Please retry.');
+    return res.json({ ok: true, data: { unlinked: true, partnerKeptCouple: Boolean(other) } });
+  },
+
+  // Relationship statistics for the couple screen.
+  async 'stats.get'({ res, user, couple }) {
+    const memories = await listAllRows('memories', [['equal', 'couple_id', couple.$id]]);
+    const moods = await listAllRows('mood_check_ins', [['equal', 'couple_id', couple.$id]]);
+    const notes = await listAllRows('pocket_notes', [['equal', 'couple_id', couple.$id]]);
+    const letters = await listAllRows('daily_letters', [['equal', 'couple_id', couple.$id]]);
+    const other = couple.partner_a_id === user.id ? couple.partner_b_id : couple.partner_a_id;
+    const mine = await listAllRows('responses', [['equal', 'author_id', user.id]]);
+    const theirs = other ? await listAllRows('responses', [['equal', 'author_id', other]]) : [];
+    const byLetter = new Map();
+    for (const r of [...mine, ...theirs]) byLetter.set(r.letter_id, (byLetter.get(r.letter_id) || 0) + 1);
+    let lettersCompleted = 0;
+    for (const c of byLetter.values()) if (c >= 2) lettersCompleted += 1;
+    const daysTogether = Math.max(0, Math.floor((Date.now() - new Date(couple.created_at).getTime()) / 86400000));
+    return res.json({
+      ok: true,
+      data: {
+        daysTogether,
+        memoriesCount: memories.length,
+        moodsCount: moods.length,
+        notesCount: notes.length,
+        lettersCount: letters.length,
+        lettersCompleted,
+      },
+    });
+  },
+
   async 'account.export'({ res, user, couple }) {
     // Exhaustive export: every category is paginated to exhaustion with a
     // stable orderAsc($id) + offset cursor, so large histories are complete
@@ -244,49 +393,25 @@ export const handlers = {
     // so the client retries — already-deleted rows stay deleted, and a
     // retried run skips them (404 treated as success).
     let failed = 0;
-    const delAll = async (table, filters) => {
-      for (let page = 0; page < 50; page += 1) {
-        const rows = await listRowsWhere(table, filters, 100);
-        if (!rows.length) return;
-        let pageFailures = 0;
-        for (const r of rows) {
-          const out = await deleteRow(table, r.$id);
-          if (out.status >= 400 && out.status !== 404) { pageFailures += 1; failed += 1; }
-        }
-        if (pageFailures) return; // stop retrying this table; run reports 500
-      }
-    };
-    // Responses cascade: partner reactions on each response go first, so no
-    // reaction outlives its target.
-    const delResponses = async () => {
-      for (let page = 0; page < 50; page += 1) {
-        const rows = await listRowsWhere('responses', [['equal', 'author_id', user.id]], 100);
-        if (!rows.length) return;
-        let pageFailures = 0;
-        for (const r of rows) {
-          await delAll('reactions', [['equal', 'response_id', r.$id]]);
-          const out = await deleteRow('responses', r.$id);
-          if (out.status >= 400 && out.status !== 404) { pageFailures += 1; failed += 1; }
-        }
-        if (pageFailures) return;
-      }
-    };
+    // Cursor-based deletion to explicit exhaustion; the shared helpers above
+    // THROW when the pagination safety ceiling is hit, so a truncated
+    // cleanup aborts the whole run (500, credentials preserved) instead of
+    // proceeding to profile/Auth deletion with private rows still stored.
     // Author-scoped cleanup runs UNCONDITIONALLY — a retried deletion after
     // a partial failure (or a run where the couple lookup fails) must still
-    // remove every caller-authored row. Only the couple-membership handling
-    // below depends on the couple being resolvable.
-    await delAll('memories', [['equal', 'author_id', user.id]]);
-    await delAll('mood_check_ins', [['equal', 'author_id', user.id]]);
-    await delAll('pocket_notes', [['equal', 'author_id', user.id]]);
-    await delAll('adventure_parts', [['equal', 'author_id', user.id]]);
-    await delResponses();
+    // remove every caller-authored row.
+    failed += await deleteAllRows('memories', [['equal', 'author_id', user.id]]);
+    failed += await deleteAllRows('mood_check_ins', [['equal', 'author_id', user.id]]);
+    failed += await deleteAllRows('pocket_notes', [['equal', 'author_id', user.id]]);
+    failed += await deleteAllRows('adventure_parts', [['equal', 'author_id', user.id]]);
+    failed += await deleteResponsesCascade(user.id);
     if (couple) {
       const iAmA = couple.partner_a_id === user.id;
       const other = iAmA ? couple.partner_b_id : couple.partner_a_id;
       if (other) {
         // Hygiene: the caller's own unconsumed invitations must not outlive
         // their membership (an expired invite is harmless, a live one is not).
-        await delAll('invitations', [['equal', 'couple_id', couple.$id], ['equal', 'created_by', user.id]]);
+        failed += await deleteAllRows('invitations', [['equal', 'couple_id', couple.$id], ['equal', 'created_by', user.id]]);
         // Leave-pairing: clear only the CALLER's slot so the remaining
         // partner keeps the couple, its letters and the companion intact.
         // Clearing the slot severs couple access IMMEDIATELY — subsequent
@@ -301,13 +426,15 @@ export const handlers = {
         // WHILE the caller is still a member, so a failure here stays
         // retryable: the retry resolves the couple again and re-enters this
         // branch instead of orphaning a memberless couple.
-        const adventures = await listRowsWhere('weekly_adventures', [['equal', 'couple_id', couple.$id]], 100);
-        for (const a of adventures) await delAll('adventure_parts', [['equal', 'adventure_id', a.$id]]);
-        await delAll('daily_letters', [['equal', 'couple_id', couple.$id]]);
-        await delAll('pet_states', [['equal', 'couple_id', couple.$id]]);
-        await delAll('milestones', [['equal', 'couple_id', couple.$id]]);
-        await delAll('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
-        await delAll('invitations', [['equal', 'couple_id', couple.$id]]);
+        const adventures = await listAllRows('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
+        for (const a of adventures) {
+          failed += await deleteAllRows('adventure_parts', [['equal', 'adventure_id', a.$id]]);
+        }
+        failed += await deleteAllRows('daily_letters', [['equal', 'couple_id', couple.$id]]);
+        failed += await deleteAllRows('pet_states', [['equal', 'couple_id', couple.$id]]);
+        failed += await deleteAllRows('milestones', [['equal', 'couple_id', couple.$id]]);
+        failed += await deleteAllRows('weekly_adventures', [['equal', 'couple_id', couple.$id]]);
+        failed += await deleteAllRows('invitations', [['equal', 'couple_id', couple.$id]]);
         // The couple row is removed only when every shared deletion
         // succeeded: a memberless couple with surviving shared rows could
         // never be reached again by a retry (no member resolves it).
@@ -330,7 +457,6 @@ export const handlers = {
     if (prof.status >= 400 && prof.status !== 404) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     const auth = await fetch(`${ENDPOINT}/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: jsonHeaders() });
     if (!auth.ok && auth.status !== 404) return fail(res, 500, 'Account deletion is incomplete — please retry.');
-    if (failed) return fail(res, 500, 'Account deletion is incomplete — please retry.');
     return res.json({ ok: true, data: { deleted: true } });
   },
 

@@ -12,7 +12,7 @@
 - Query format tested through the live TablesDB operator: SDK-style `{method:'equal',attribute:'category',values:['Everyday']}` + limit returned 10 questions; `{method:'orderAsc',attribute:'$id'}` + cursorAfter `q50` returned 40 rows `q51` onward; REST-doc `column` format was rejected. Keep the actually accepted `attribute` query serialization.
 - Android platform: **created by ChatGPT via connected Appwrite API**, ID `couples_android`, package `com.projecttwo.app`; re-read through `project_list_platforms`. ZCode's earlier 409/list-empty anomaly is **resolved**. No duplicate registration needed.
 - Storage bucket: **created by ChatGPT via connected Appwrite API**, ID `couples_memory_photos`, name `Couples Private Memory Photos`. Empty `$permissions: []`; `fileSecurity: true`, enabled, encryption and antivirus enabled, max size 10 MiB, extension allowlist jpg/jpeg/png/webp/heic/heif, transformations disabled. Verified by reading back the bucket. No personal photos uploaded.
-- Appwrite project as checked: 0 users, 0 Functions, 0 project API keys. **No live server-side Function or real-user integration is proven.**
+- Appwrite project currently has 0 users and 0 project API keys. A **disabled, deployment-free** Function shell exists, but there is **no active Function code and no real-user integration**.
 
 ## Important deployment improvement — no permanent project API key is necessarily required
 
@@ -32,3 +32,11 @@ Official docs: https://appwrite.io/docs/products/functions/develop and https://a
 6. Check Windows C: disk before local testing; ZCode last reported ~1.2 GiB free. No destructive AVD/Docker cleanup, local Gradle/emulator or paid resources.
 
 **Verification boundary:** The live resource and seed readbacks above were executed from the connected Appwrite account. They are **not** a production security certification. Cloud Functions, real user identities, and mobile E2E remain untested.
+
+
+## Follow-up Appwrite configuration independently completed
+
+- Anonymous sign-in was explicitly **disabled** in the dedicated Couples project's Auth methods. Email/password and email-OTP remain enabled, allowing real-account registration and verification tests. Other default methods have not been altered. Appwrite Cloud's built-in generic SMTP service is available when custom SMTP is not enabled; **actual verification/recovery delivery is not yet tested**.
+- The `couples-api` Function resource was created on the Free plan using the supported Node.js 22 runtime but deliberately configured as **disabled**, `execute: []`, `scopes: []`, no code deployment, entrypoint `src/main.js`, and logging disabled. This is **NOT an operational endpoint**. No admin permissions, persistent API key or customer execution was granted.
+- Appwrite Function documentation confirms that `x-appwrite-key` is injected **per execution**. To activate the Function safely, ZCode must first refactor the existing module-level `APPWRITE_API_KEY` dependency into **request-scoped execution credential handling**, configure the minimum Function scopes, add adversarial tests, and deploy the reviewed build. Only after successful live authentication/access tests should execution access be enabled for actual users.
+- The Appwrite Cloud default email sender can be used for initial account verification tests on the Free plan; custom SMTP/template branding is not configured and is not required to begin testing. Actual delivery remains unverified.

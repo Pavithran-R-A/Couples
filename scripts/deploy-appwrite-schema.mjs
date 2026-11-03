@@ -156,9 +156,11 @@ for (const table of contract.tables) {
       failures += 1;
       continue;
     }
+    // --columns is a repeatable stringArray flag: one --columns per column.
+    const columnFlags = (idx.attributes ?? []).flatMap((a) => ['--columns', a]);
     const out = run(
       ['tablesdb', 'create-index', '--database-id', DB, '--table-id', tid, '--key', idx.key,
-        '--type', idx.type, '--attributes', ...(idx.attributes ?? [])],
+        '--type', idx.type, ...columnFlags],
       { allowFail: true }
     );
     if (/already exists|Conflict|409/i.test(out)) {

@@ -68,7 +68,7 @@ for (const q of canonical) {
   if (dryRun) continue;
   if (/already exists|Conflict|409/i.test(out)) {
     // Duplicate protection: verify the existing row matches the snapshot.
-    const got = cli(['tablesdb', 'get-row', '--database-id', DB, '--table-id', TABLE, '--row-id', q.id], { allowFail: true });
+    const got = cli(['tablesdb', 'get-row', '--json', '--database-id', DB, '--table-id', TABLE, '--row-id', q.id], { allowFail: true });
     let row = null;
     try { row = JSON.parse(got); } catch { /* parse below flags it */ }
     if (row && row.category === q.category && row.text === q.text) {
@@ -92,7 +92,7 @@ let readbackChecksum = '';
 if (!dryRun) {
   const rows = [];
   for (const q of canonical) {
-    const got = cli(['tablesdb', 'get-row', '--database-id', DB, '--table-id', TABLE, '--row-id', q.id], { allowFail: true });
+    const got = cli(['tablesdb', 'get-row', '--json', '--database-id', DB, '--table-id', TABLE, '--row-id', q.id], { allowFail: true });
     let row = null;
     try { row = JSON.parse(got); } catch { /* counted below */ }
     if (!row || row.category !== q.category || row.text !== q.text) {
@@ -107,7 +107,7 @@ if (!dryRun) {
     console.error(`READBACK INCOMPLETE: ${rows.length}/${canonical.length} rows verified.`);
     failures += 1;
   }
-  const listed = cli(['tablesdb', 'list-rows', '--database-id', DB, '--table-id', TABLE, '--queries', JSON.stringify([{ method: 'limit', values: [100] }])], { allowFail: true });
+  const listed = cli(['tablesdb', 'list-rows', '--json', '--database-id', DB, '--table-id', TABLE], { allowFail: true });
   let listedParsed = null;
   try { listedParsed = JSON.parse(listed); } catch {
     console.error('LIST-ROWS OUTPUT UNPARSEABLE — count verification failed.');

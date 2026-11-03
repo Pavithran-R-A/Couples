@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
 
@@ -47,6 +47,27 @@ jobs:
         with:
           name: web-dist
           path: dist
+
+  couples-api:
+    name: Couples API security Function (Appwrite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+
+      # Zero-dependency adversarial suite: runs the real function entrypoint
+      # against an in-memory Appwrite TablesDB REST mock. Values below are
+      # synthetic test placeholders (also in functions/couples-api/.env.test).
+      - name: Couples API adversarial tests
+        run: node --test functions/couples-api/test/main.test.mjs
+        env:
+          APPWRITE_ENDPOINT: https://sgp.cloud.appwrite.io/v1
+          APPWRITE_API_KEY: test-server-key
+          APPWRITE_FUNCTION_PROJECT_ID: test-project
+          APPWRITE_CODE_PEPPER: test-pepper
 
   migration:
     name: SQL migration + authorization on real Postgres

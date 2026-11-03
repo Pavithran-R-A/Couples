@@ -1,6 +1,7 @@
 // Shared infrastructure for the couples-api function: pinned-origin API
-// access, strict identifier validation (SSRF hardening), identity helpers
-// and small date/id utilities. Zero npm dependencies.
+// access, strict identifier validation (SSRF hardening), verified-caller
+// authentication, TablesDB transaction lifecycle, and small date/id
+// utilities. Zero npm dependencies.
 //
 // SSRF hardening: the API origin is pinned at module load to the https
 // endpoint from the deployment environment; every path segment built from
@@ -32,58 +33,7 @@ export function safeId(value, label) {
   return encodeURIComponent(v);
 }
 
-const jsonHeaders = { 'Content-Type': 'application/json', 'X-Appwrite-Project': PROJECT, 'X-Appwrite-Key': API_KEY };
-
-export async function api(method, table, rowId, body) {
-  const target = rowId === undefined
-    ? `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows`
-    : `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows/${safeId(rowId, 'rowId')}`;
-  const r = await fetch(target, {
-    method,
-    headers: jsonHeaders,
-    body: body === undefined ? undefined : JSON.stringify({ data }),
-  });
-  const text = await r.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  return { status: r.status, data, total: Number(r.headers.get('x-appwrite-total') || 0) };
-}
-
-export const getRow = (table, rowId) => api('GET', table, safeId(rowId, 'rowId'));
-export const createRow = (table, rowId, data) => api('POST', table, rowId === 'unique()' ? undefined : rowId, data);
-export const updateRow = (table, rowId, data) => api('PATCH', table, rowId, data);
-export const deleteRow = (table, rowId) => api('DELETE', table, safeId(rowId, 'rowId'));
-
-export async function listRowsQ(table, filters, limit = 100) {
-  const queries = filters.map(([method, attr, value]) => `${method}(${JSON.stringify(attr)}, ${JSON.stringify(value)})`);
-  queries.push(`limit(${Math.min(limit, 100)})`, 'orderDesc("$createdAt")');
-  const url = `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows?queries[]=${encodeURIComponent(JSON.stringify(queries))}`;
-  const r = await fetch(url, { headers: jsonHeaders });
-  const data = await r.json().catch(() => null);
-  return data?.rows ?? [];
-}
-
-export async function transaction(operations) {
-  const r = await fetch(`${ENDPOINT}/tablesdb/transactions`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({
-      operations: operations.map((o) => ({
-        action: o.action,
-        tableId: o.tableId,
-        rowId: safeId(o.rowId, 'rowId'),
-        data: o.data,
-      })),
-    }),
-  });
-  return { status: r.status, data: await r.json().catch(() => null) };
-}
-
-export async function getUser(userId) {
-  const r = await fetch(`${ENDPOINT}/users/${safeId(userId, 'userId')}`, { headers: jsonHeaders });
-  if (!r.ok) return null;
-  return r.json().catch(() => null);
-}
+export function fail(res, code, message) { return res.json({ ok: false, error: message }, code); }
 
 export const now = () => new Date().toISOString();
 export const dayKey = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -107,12 +57,115 @@ export function randomCode() {
   return out.slice(0, 4) + '-' + out.slice(4);
 }
 
-export function fail(res, code, message) { return res.json({ ok: false, error: message }, code); }
+function headers(withJson) {
+  const h = { 'X-Appwrite-Project': PROJECT, 'X-Appwrite-Key': API_KEY };
+  if (withJson) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+// TablesDB rows REST helpers. Documented shapes:
+//   create: POST /tablesdb/{db}/tables/{t}/rows  body { rowId?, data }
+//   update: PATCH /tablesdb/{db}/tables/{t}/rows/{rowId}  body { data }
+//   get/delete: .../rows/{rowId}  (rowId is the row's $id)
+// The API key acts with admin permissions, so every call site MUST enforce
+// authorization before reaching these helpers.
+export async function api(method, table, rowId, data, txnId) {
+  const isCreate = method === 'POST';
+  const target = isCreate
+    ? `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows`
+    : `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows/${safeId(rowId, 'rowId')}`;
+  const h = headers(data !== undefined);
+  if (txnId) h['X-Appwrite-Transaction-Id'] = txnId;
+  // Documented bodies: create { rowId?, data }; update PATCH { data }.
+  let body;
+  if (isCreate) body = { rowId: rowId ?? 'unique()', data: data ?? {} };
+  else if (method === 'PATCH' && data !== undefined) body = { data };
+  const r = await fetch(target, {
+    method,
+    headers: h,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const out = await r.json().catch(() => null);
+  return { status: r.status, data: out, total: Number(r.headers.get('x-appwrite-total') || 0) };
+}
+
+export const createRow = (table, rowId, data, txnId) => api('POST', table, rowId, data, txnId);
+export const getRow = (table, rowId) => api('GET', table, rowId);
+export const updateRow = (table, rowId, data, txnId) => api('PATCH', table, rowId, data, txnId);
+export const deleteRow = (table, rowId) => api('DELETE', table, rowId);
+
+export function qLimit(n) {
+  return `limit(${n})`;
+}
+
+export function qEqual(attr, value) {
+  return `equal(${JSON.stringify(attr)}, ${JSON.stringify(value)})`;
+}
+
+// Lists rows as a plain array. A failing list THROWS rather than returning
+// []: treating an API error as "no rows" would wrongly admit create paths.
+export async function listRowsWhere(table, filters, limit = 100, txnId) {
+  // Documented shape: one queries[] parameter per query string, each
+  // individually URI-encoded (Appwrite rejects a JSON-array parameter).
+  const queries = [...filters.map(([, attr, value]) => qEqual(attr, value)), qLimit(limit)];
+  const qs = queries.map((q) => `queries[]=${encodeURIComponent(q)}`).join('&');
+  const url = `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows?${qs}`;
+  const h = headers(false);
+  if (txnId) h['X-Appwrite-Transaction-Id'] = txnId;
+  const r = await fetch(url, { headers: h });
+  const out = await r.json().catch(() => null);
+  if (r.status >= 400) throw new Error(`listRowsWhere ${table}: HTTP ${r.status}`);
+  return out?.rows ?? [];
+}
+
+// TablesDB transaction lifecycle (documented): create the transaction, stage
+// row operations against it via the transaction header, then commit.
+// Committed operations apply atomically; an abandoned transaction leaves no
+// partial state.
+export async function transactionCreate() {
+  const r = await fetch(`${ENDPOINT}/tablesdb/transactions`, { method: 'POST', headers: headers(true), body: '{}' });
+  const out = await r.json().catch(() => null);
+  return { status: r.status, data: out };
+}
+
+export async function transactionCommit(txnId) {
+  const r = await fetch(`${ENDPOINT}/tablesdb/transactions/${safeId(txnId, 'txnId')}/commit`, {
+    method: 'POST', headers: headers(true),
+  });
+  const out = await r.json().catch(() => null);
+  return { status: r.status, data: out };
+}
+
+export async function withTransaction(run) {
+  const created = await transactionCreate();
+  if (created.status >= 400) return { status: created.status, ok: false };
+  const txnId = created.data?.$id;
+  const staged = await run((method, table, rowId, data) => api(method, table, rowId, data, txnId));
+  // Abort on any failed stage — either the runner reported its own verdict
+  // (ok:false) or a raw API result carries a failing status. The transaction
+  // is abandoned uncommitted, so no partial state is ever applied.
+  if (staged && staged.ok === false) return { status: staged.status ?? 409, ok: false };
+  if (staged && typeof staged.status === 'number' && staged.status >= 400) return { status: staged.status, ok: false };
+  const committed = await transactionCommit(txnId);
+  return { status: committed.status, ok: committed.status < 400 };
+}
+
+// Verified-caller authentication: the x-appwrite-user-jwt header is validated
+// against the project by calling /account with the JWT itself (no API key).
+// Only a JWT Appwrite accepts returns the caller — spoofed headers fail here.
+export async function verifyCaller(jwt) {
+  const r = await fetch(`${ENDPOINT}/account`, {
+    headers: { 'X-Appwrite-Project': PROJECT, 'X-Appwrite-JWT': jwt },
+  });
+  if (!r.ok) return null;
+  const data = await r.json().catch(() => null);
+  return data && data.$id ? { id: data.$id, email: data.email || '', name: data.name || '' } : null;
+}
 
 export async function getCouple(userId) {
-  const mine = await listRowsQ('couples', [['equal', 'partner_a_id', userId]], 1);
+  const mine = await listRowsWhere('couples', [['equal', 'partner_a_id', userId]], 1);
   if (mine.length) return mine[0];
-  const theirs = await listRowsQ('couples', [['equal', 'partner_b_id', userId]], 1);
+  const theirs = await listRowsWhere('couples', [['equal', 'partner_b_id', userId]], 1);
   return theirs[0] ?? null;
 }
 
@@ -120,3 +173,4 @@ export async function getProfile(userId) {
   const r = await getRow('profiles', userId);
   return r.status === 200 ? r.data : null;
 }
+

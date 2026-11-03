@@ -4,7 +4,7 @@
 // the concurrency backstop).
 
 import {
-  createRow, updateRow, getRow, listRowsQ, transaction,
+  createRow, updateRow, getRow, listRowsWhere, withTransaction,
   getProfile, getCouple, sha256Hex, randomCode, now, fail,
   INVITE_TTL_DAYS, DAY_MS,
 } from './lib.js';
@@ -35,13 +35,13 @@ export const handlers = {
   async 'pair.status'({ res, user }) {
     const profile = await getProfile(user.id);
     const couple = profile?.couple_id ? await getCouple(user.id) : null;
-    const invitations = couple ? await listRowsQ('invitations', [['equal', 'couple_id', couple.id], ['equal', 'created_by', user.id]], 5) : [];
+    const invitations = couple ? await listRowsWhere('invitations', [['equal', 'couple_id', couple.$id], ['equal', 'created_by', user.id]], 5) : [];
     const active = invitations.find((i) => !i.consumed_at && new Date(i.expires_at).getTime() > Date.now());
     return res.json({
       ok: true,
       data: {
         paired: Boolean(couple && couple.partner_a_id && couple.partner_b_id),
-        coupleId: couple?.id ?? null,
+        coupleId: couple?.$id ?? null,
         role: couple ? (couple.partner_a_id === user.id ? 'a' : 'b') : null,
         activeInvite: active ? { expires_at: active.expires_at } : null,
       },
@@ -58,16 +58,18 @@ export const handlers = {
     const code = randomCode();
     const digest = await sha256Hex(code);
     const expires = new Date(Date.now() + INVITE_TTL_DAYS * DAY_MS).toISOString();
-    await createRow('invitations', 'unique()', { couple_id: couple.data.id, created_by: user.id, code_digest: digest, expires_at: expires, created_at: now() });
-    await updateRow('profiles', user.id, { couple_id: couple.data.id });
-    return res.json({ ok: true, data: { coupleId: couple.data.id, code, expires_at: expires } });
+    await createRow('invitations', 'unique()', { couple_id: couple.data.$id, created_by: user.id, code_digest: digest, expires_at: expires, created_at: now() });
+    await updateRow('profiles', user.id, { couple_id: couple.data.$id });
+    return res.json({ ok: true, data: { coupleId: couple.data.$id, code, expires_at: expires } });
   },
 
   async 'pair.join'({ res, user, body }) {
     const code = String(body.code || '').trim().toUpperCase();
     if (!/^[A-Z0-9-]{9}$/.test(code)) return fail(res, 400, 'That code does not look right.');
+    const mine = await getProfile(user.id);
+    if (mine?.couple_id) return fail(res, 409, 'You are already paired.');
     const digest = await sha256Hex(code);
-    const found = await listRowsQ('invitations', [['equal', 'code_digest', digest]], 1);
+    const found = await listRowsWhere('invitations', [['equal', 'code_digest', digest]], 1);
     const invite = found[0];
     if (!invite) return fail(res, 404, 'No invitation matches that code.');
     if (invite.consumed_at) return fail(res, 409, 'That invitation was already used.');
@@ -76,12 +78,19 @@ export const handlers = {
     if (couple.status >= 400) return fail(res, 404, 'The invitation couple no longer exists.');
     if (couple.data.partner_a_id === user.id || couple.data.partner_b_id) return fail(res, 409, 'That couple already has two partners.');
     if (invite.created_by === user.id) return fail(res, 409, 'You cannot join your own invitation.');
-    const t = await transaction([
-      { action: 'update', tableId: 'invitations', rowId: invite.id, data: { consumed_at: now() } },
-      { action: 'update', tableId: 'couples', rowId: couple.data.id, data: { partner_b_id: user.id } },
-      { action: 'update', tableId: 'profiles', rowId: user.id, data: { couple_id: couple.data.id } },
-    ]);
-    if (t.status >= 400) return fail(res, 409, 'Someone else joined at the same moment. Try again.');
-    return res.json({ ok: true, data: { coupleId: couple.data.id } });
+    // Atomic join: consume the invitation, fill partner_b and link both
+    // profiles inside one committed TablesDB transaction. A concurrent join
+    // fails the commit (the unique consume/consumed_at path) and leaves no
+    // partial state.
+    const joined = await withTransaction(async (apiTx) => {
+      const consume = await apiTx('PATCH', 'invitations', invite.$id, { consumed_at: now() });
+      if (consume.status >= 400) return { ok: false };
+      const link = await apiTx('PATCH', 'couples', couple.data.$id, { partner_b_id: user.id });
+      if (link.status >= 400) return { ok: false };
+      const prof = await apiTx('PATCH', 'profiles', user.id, { couple_id: couple.data.$id });
+      return { ok: prof.status < 400 };
+    });
+    if (!joined.ok) return fail(res, 409, 'Someone else joined at the same moment. Try again.');
+    return res.json({ ok: true, data: { coupleId: couple.data.$id } });
   },
 };

@@ -1,37 +1,54 @@
 // couples-api — consolidated Appwrite Function (Free plan: 1 of 2 slots).
 // Security boundary for the Couples app: every action verifies the caller's
-// real Appwrite identity (the JWT injected by the execution runtime), checks
-// couple membership server-side, and never trusts a client-supplied
-// userId/coupleId. All private tables are default-deny; this function is the
-// only data path. Zero npm dependencies: uses the global fetch of the
-// Node 18+ runtime.
+// real Appwrite identity by validating the x-appwrite-user-jwt against the
+// project's /account endpoint (a spoofed header fails there), then resolves
+// couple membership server-side. Client-supplied userId/coupleId is never
+// trusted. All private tables are default-deny; this function is the only
+// data path. Zero npm dependencies: Node 18+ global fetch.
 //
 // Action modules: pairing.js (onboarding/pairing), letters.js (daily
 // letters, sealed responses, reactions), content.js (Lumi, memories,
 // moods, notes, milestones, adventures, export/delete).
 
-import { fail, safeId } from './lib.js';
-import { handlers as pairing, bootstrapProfile, getCouple } from './pairing.js';
+import { fail, verifyCaller, getCouple } from './lib.js';
+import { handlers as pairing, bootstrapProfile } from './pairing.js';
 import { handlers as letters } from './letters.js';
 import { handlers as content } from './content.js';
 
 const handlers = { ...pairing, ...letters, ...content };
 
+// Actions that are meaningful without a couple (onboarding, pairing,
+// lifecycle). Every other action is deny-by-default until the caller is
+// paired, so an unpaired or deleted account cannot reach couple data.
+const PAIRLESS = new Set([
+  'profile.bootstrap', 'profile.get', 'pair.status', 'pair.start', 'pair.join',
+  'account.export', 'account.delete',
+]);
+
 export default async ({ req, res, log, error }) => {
-  const user = req.user;
-  if (!user?.id) return fail(res, 401, 'Sign in to use Couples.');
-  const action = handlers[String(req.headers['x-action'] || '')];
+  const jwt = req.headers['x-appwrite-user-jwt'];
+  if (!jwt) return fail(res, 401, 'Sign in to use Couples.');
+
+  // Verified identity: the JWT is validated by Appwrite itself via /account.
+  // A spoofed user-id header without a valid JWT fails here.
+  const caller = await verifyCaller(jwt).catch(() => null);
+  if (!caller) return fail(res, 401, 'Your session is invalid or expired.');
+
+  const actionName = String(req.headers['x-action'] || '');
+  const action = handlers[actionName];
   if (!action) return fail(res, 404, 'Unknown action.');
   let body = {};
   try { body = typeof req.bodyJson === 'object' && req.bodyJson ? req.bodyJson : JSON.parse(req.body || '{}'); } catch { body = {}; }
+
   try {
-    const profile = await bootstrapProfile(user);
+    const profile = await bootstrapProfile(caller);
     const couple = profile?.couple_id
-      ? await getCouple(user.id).catch((e) => { error('couple lookup failed: ' + String(e)); return null; })
+      ? await getCouple(caller.id).catch((e) => { error('couple lookup failed: ' + String(e)); return null; })
       : null;
-    return await action({ req, res, log, error, user, profile, couple, body });
+    if (!couple && !PAIRLESS.has(actionName)) return fail(res, 403, 'Pair with your partner to use this.');
+    return await action({ req, res, log, error, user: caller, profile, couple, body });
   } catch (e) {
-    error(`action ${req.headers['x-action']} failed: ${String(e)}`);
+    error(`action ${actionName} failed: ${String(e)}`);
     return fail(res, 500, 'Something went wrong on the server.');
   }
 };

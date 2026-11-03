@@ -5,10 +5,10 @@
 // and the linked project (appwrite.config.json).
 //
 // Usage: node scripts/deploy-appwrite-schema.mjs [--dry-run]
-import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { runCli } from './lib/appwrite-cli.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -34,7 +34,7 @@ function run(args, { allowFail = false } = {}) {
     return '';
   }
   try {
-    return execFileSync('appwrite', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 });
+    return runCli(args);
   } catch (e) {
     const out = String(e.stdout || '') + String(e.stderr || '') + String(e.message || '');
     if (allowFail) return out;

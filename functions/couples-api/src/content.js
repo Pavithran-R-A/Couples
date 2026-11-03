@@ -4,7 +4,7 @@
 // and account deletion.
 
 import {
-  createRow, updateRow, getRow, deleteRow, listRowsWhere,
+  createRow, updateRow, getRow, deleteRow, listRowsWhere, listAllRows, withTransaction,
   now, weekKey, fail, safeId, WARMTH_STEP, WARMTH_MAX,
   getCouple, getProfile, ENDPOINT, PROJECT, API_KEY,
 } from './lib.js';
@@ -31,12 +31,25 @@ export const handlers = {
     if (!['water', 'sunlight', 'play'].includes(action)) return fail(res, 400, 'Unknown care action.');
     const pet = await ensurePet(couple.$id);
     const stamp = now();
-    const patch = { affection: Math.min(WARMTH_MAX, Number(pet.affection) + WARMTH_STEP), mood: 'cared', last_interaction_at: stamp };
+    const patch = { mood: 'cared', last_interaction_at: stamp };
     if (action === 'water') patch.last_watered_at = stamp;
     if (action === 'sunlight') patch.last_sunlit_at = stamp;
-    const upd = await updateRow('pet_states', pet.$id, patch);
-    if (upd.status >= 400) return fail(res, 500, 'The care could not be saved.');
-    return res.json({ ok: true, data: { pet: upd.data } });
+    // ONE transaction: the mood/timestamp patch and the ATOMIC warmth
+    // increment (official increment endpoint) commit together, so two
+    // simultaneous care actions cannot lose an update and a failure applies
+    // neither half. A committed transaction returns the transaction object,
+    // not rows — the fresh pet state is read back afterwards.
+    const result = await withTransaction(async (apiTx) => {
+      const upd = await apiTx('PATCH', 'pet_states', pet.$id, patch);
+      if (upd.status >= 400) return { ok: false };
+      const inc = await apiTx('PATCH', 'pet_states', pet.$id, { value: WARMTH_STEP, max: WARMTH_MAX }, { incrementColumn: 'affection' });
+      if (inc.status >= 400) return { ok: false };
+      return { ok: true };
+    });
+    if (!result.ok) return fail(res, 500, 'The care could not be saved.');
+    const fresh = await getRow('pet_states', pet.$id);
+    if (fresh.status >= 400) return fail(res, 500, 'The care could not be saved.');
+    return res.json({ ok: true, data: { pet: fresh.data } });
   },
 
   async 'memory.list'({ res, couple }) {
@@ -49,8 +62,12 @@ export const handlers = {
     const note = String(body.note || '').trim().slice(0, 2000);
     const memoryDate = String(body.memory_date || '').slice(0, 10);
     if (!title) return fail(res, 400, 'The memory needs a title.');
+    // Shape + real-calendar check (round-trip catches overflow dates such as
+    // 2026-02-30 that some parsers would silently normalize).
+    const parsedDate = new Date(`${memoryDate}T00:00:00Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(memoryDate)
-      || Number.isNaN(new Date(`${memoryDate}T00:00:00Z`).getTime())) {
+      || Number.isNaN(parsedDate.getTime())
+      || parsedDate.toISOString().slice(0, 10) !== memoryDate) {
       return fail(res, 400, 'The date needs the YYYY-MM-DD shape.');
     }
     const created = await createRow('memories', 'unique()', { couple_id: couple.$id, author_id: user.id, title, note, memory_date: memoryDate, created_at: now() });
@@ -63,7 +80,10 @@ export const handlers = {
     if (!raw) return fail(res, 400, 'Missing memory.');
     const id = safeId(raw, 'id');
     const current = await getRow('memories', id);
-    if (current.status >= 400) return fail(res, 404, 'That memory no longer exists.');
+    // Read outcomes are distinguished: only a real 404 means "gone";
+    // auth/permission/rate/server failures must not masquerade as it.
+    if (current.status === 404) return fail(res, 404, 'That memory no longer exists.');
+    if (current.status >= 400) return fail(res, 500, 'The memory could not be verified.');
     const couple = await getCouple(user.id);
     if (!couple || current.data.couple_id !== couple.$id) return fail(res, 403, 'Not your memory.');
     const patch = {};
@@ -83,7 +103,11 @@ export const handlers = {
     if (!raw) return fail(res, 400, 'Missing memory.');
     const id = safeId(raw, 'id');
     const current = await getRow('memories', id);
-    if (current.status >= 400) return res.json({ ok: true, data: { gone: true } });
+    // Only an authenticated, successful read proving the row is MISSING
+    // (404) earns the idempotent gone:true. A 401/403/429/5xx or timeout on
+    // the read is NOT evidence of deletion and must surface as an error.
+    if (current.status === 404) return res.json({ ok: true, data: { gone: true } });
+    if (current.status >= 400) return fail(res, 500, 'The memory could not be verified — nothing was deleted.');
     const couple = await getCouple(user.id);
     if (!couple || current.data.couple_id !== couple.$id) return fail(res, 403, 'Not your memory.');
     const out = await deleteRow('memories', id);
@@ -155,9 +179,12 @@ export const handlers = {
     if (!raw) return fail(res, 400, 'Missing adventure.');
     const adventureId = safeId(raw, 'adventure_id');
     // Couple membership: the adventure must belong to the caller's couple,
-    // otherwise a crafted adventure id would leak the partner's part.
+    // otherwise a crafted adventure id would leak the partner's part. Only a
+    // 404 read counts as "not found"; backend failures surface as errors.
     const adv = await getRow('weekly_adventures', adventureId);
-    if (adv.status >= 400 || adv.data.couple_id !== couple.$id) return fail(res, 403, 'Not your adventure.');
+    if (adv.status === 404) return fail(res, 403, 'Not your adventure.');
+    if (adv.status >= 400) return fail(res, 500, 'The adventure could not be verified.');
+    if (adv.data.couple_id !== couple.$id) return fail(res, 403, 'Not your adventure.');
     const mine = await listRowsWhere('adventure_parts', [['equal', 'adventure_id', adventureId], ['equal', 'author_id', user.id]], 1);
     const all = await listRowsWhere('adventure_parts', [['equal', 'adventure_id', adventureId]], 2);
     const both = all.length >= 2;
@@ -178,7 +205,8 @@ export const handlers = {
     const entry = String(body.entry || '').trim().slice(0, 500);
     if (!entry) return fail(res, 400, 'Write your part first.');
     const adv = await getRow('weekly_adventures', adventureId);
-    if (adv.status >= 400) return fail(res, 403, 'Not your adventure.');
+    if (adv.status === 404) return fail(res, 403, 'Not your adventure.');
+    if (adv.status >= 400) return fail(res, 500, 'The adventure could not be verified.');
     const couple = await getCouple(user.id);
     if (!couple || adv.data.couple_id !== couple.$id) return fail(res, 403, 'Not your adventure.');
     const prior = await listRowsWhere('adventure_parts', [['equal', 'adventure_id', adventureId], ['equal', 'author_id', user.id]], 1);
@@ -189,13 +217,16 @@ export const handlers = {
   },
 
   async 'account.export'({ res, user, couple }) {
-    const bundle = { exported_at: now(), profile: await getProfile(user.id), couple: couple ?? null };
+    // Exhaustive export: every category is paginated to exhaustion with a
+    // stable orderAsc($id) + offset cursor, so large histories are complete
+    // rather than silently truncated at the first 100 rows.
+    const bundle = { exported_at: now(), profile: await getProfile(user.id), couple: couple ? { id: couple.$id, created_at: couple.created_at, anniversary: couple.anniversary ?? null } : null };
     if (couple) {
-      bundle.daily_letters = await listRowsWhere('daily_letters', [['equal', 'couple_id', couple.$id]], 100);
-      bundle.responses = await listRowsWhere('responses', [['equal', 'author_id', user.id]], 100);
-      bundle.memories = await listRowsWhere('memories', [['equal', 'couple_id', couple.$id]], 100);
-      bundle.mood_check_ins = await listRowsWhere('mood_check_ins', [['equal', 'author_id', user.id]], 100);
-      bundle.pocket_notes = await listRowsWhere('pocket_notes', [['equal', 'couple_id', couple.$id]], 100);
+      bundle.daily_letters = await listAllRows('daily_letters', [['equal', 'couple_id', couple.$id]]);
+      bundle.responses = await listAllRows('responses', [['equal', 'author_id', user.id]]);
+      bundle.memories = await listAllRows('memories', [['equal', 'couple_id', couple.$id]]);
+      bundle.mood_check_ins = await listAllRows('mood_check_ins', [['equal', 'author_id', user.id]]);
+      bundle.pocket_notes = await listAllRows('pocket_notes', [['equal', 'couple_id', couple.$id]]);
       bundle.pet_state = await listRowsWhere('pet_states', [['equal', 'couple_id', couple.$id]], 1);
     }
     return res.json({ ok: true, data: bundle });

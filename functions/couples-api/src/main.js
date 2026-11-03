@@ -52,9 +52,15 @@ export default async ({ req, res, log, error }) => {
 
   try {
     const profile = await bootstrapProfile(caller);
-    const couple = profile?.couple_id
-      ? await getCouple(caller.id).catch((e) => { error('couple lookup failed: ' + String(e)); return null; })
-      : null;
+    // Membership states are DISTINGUISHED, never conflated:
+    //  - confirmed membership  -> couple row returned
+    //  - confirmed absence     -> null (profile has no couple_id, or the id
+    //                             points at a couple row that no longer exists)
+    //  - backend query failure -> getCouple THROWS; the failure propagates and
+    //    the request fails closed (500). A failed lookup must NEVER be
+    //    reclassified as "unpaired" — that would let account deletion destroy
+    //    credentials while the couple still names the caller.
+    const couple = profile?.couple_id ? await getCouple(caller.id) : null;
     if (!couple && !PAIRLESS.has(actionName)) return fail(res, 403, 'Pair with your partner to use this.');
     return await action({ req, res, log, error, user: caller, profile, couple, body });
   } catch (e) {

@@ -11,11 +11,11 @@
 // Verification performed: per-row readback byte-compare, total count,
 // snapshot count, and a sha256 checksum of the readback content compared
 // against the snapshot checksum.
-import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { runCli } from './lib/appwrite-cli.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -46,7 +46,7 @@ function cli(args, { allowFail = false } = {}) {
     return '';
   }
   try {
-    return execFileSync('appwrite', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 });
+    return runCli(args);
   } catch (e) {
     const out = String(e.stdout || '') + String(e.stderr || '') + String(e.message || '');
     if (allowFail) return out;
@@ -103,17 +103,32 @@ if (!dryRun) {
     rows.push({ id: q.id, category: row.category, text: row.text });
   }
   readbackChecksum = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
-  if (rows.length !== canonical.length) failures += 1;
+  if (rows.length !== canonical.length) {
+    console.error(`READBACK INCOMPLETE: ${rows.length}/${canonical.length} rows verified.`);
+    failures += 1;
+  }
   const listed = cli(['tablesdb', 'list-rows', '--database-id', DB, '--table-id', TABLE, '--queries', JSON.stringify([{ method: 'limit', values: [100] }])], { allowFail: true });
-  let total = null;
-  try { total = JSON.parse(listed).total; } catch { /* counted below */ }
-  if (total !== null && total !== canonical.length) {
-    console.error(`TABLE COUNT ${total} != expected ${canonical.length} — unexpected extra rows.`);
+  let listedParsed = null;
+  try { listedParsed = JSON.parse(listed); } catch {
+    console.error('LIST-ROWS OUTPUT UNPARSEABLE — count verification failed.');
+    failures += 1;
+  }
+  const total = listedParsed && Number.isInteger(listedParsed.total) ? listedParsed.total : null;
+  if (total === null) {
+    if (listedParsed !== null) console.error('LIST-ROWS TOTAL MISSING — count verification failed.');
+    failures += 1;
+  } else if (total !== canonical.length) {
+    console.error(`TABLE COUNT ${total} != expected ${canonical.length} — unexpected extra or missing records.`);
     failures += 1;
   }
   console.log(`readback: ${rows.length}/${canonical.length} rows byte-verified`);
   console.log(`readback checksum: ${readbackChecksum}`);
-  console.log(readbackChecksum === snapshotChecksum ? 'READBACK == SNAPSHOT' : 'READBACK != SNAPSHOT');
+  if (readbackChecksum !== snapshotChecksum) {
+    console.error('READBACK CHECKSUM != SNAPSHOT CHECKSUM — cloud content differs from the original questions.');
+    failures += 1;
+  } else {
+    console.log('READBACK == SNAPSHOT');
+  }
 }
 
 console.log(`SEED ${dryRun ? '(dry-run)' : 'COMPLETE'}: created=${created} verifiedExisting=${verifiedExisting} failures=${failures}`);

@@ -40,6 +40,9 @@ let failStagedCreateFor = null;
 let failDeleteFor = null;
 let failCreateFor = null;
 let failPatchFor = null;
+let failGetStatus = null;   // { table, status } — injected read failure
+let throwOnGetFor = null;   // table name — injected read timeout
+let failListOnCall = null;  // { table, status, n } — the Nth list call on the table fails
 let throwOnStagedPatch = false;
 let failRollback = false;
 const now = () => new Date().toISOString();
@@ -107,24 +110,34 @@ function genId() { return `row-${Math.random().toString(36).slice(2, 10)}`; }
 function applyFilters(rows, queries) {
   let out = rows;
   let limit = rows.length;
+  let offset = 0;
+  let orderAttr = null;
   for (const q of queries) {
     let parsed;
     try { parsed = JSON.parse(q); } catch { throw new Error(`malformed query (not JSON): ${q}`); }
+    // orderAsc carries { method, attribute } with no values (the SDK omits
+    // undefined); every other supported method requires a values array.
+    const needsValues = parsed && parsed.method !== 'orderAsc';
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
       || typeof parsed.method !== 'string'
-      || !Array.isArray(parsed.values)
-      || (parsed.method !== 'limit' && typeof parsed.attribute !== 'string')) {
+      || (needsValues && !Array.isArray(parsed.values))
+      || (parsed.method !== 'limit' && parsed.method !== 'orderAsc' && parsed.method !== 'offset' && typeof parsed.attribute !== 'string')) {
       throw new Error(`unsupported or malformed query: ${q}`);
     }
     if (parsed.method === 'equal') {
       out = out.filter((r) => parsed.values.some((v) => String(r[parsed.attribute]) === String(v)));
     } else if (parsed.method === 'limit') {
       limit = Math.min(limit, Number(parsed.values[0]) || 0);
+    } else if (parsed.method === 'offset') {
+      offset = Number(parsed.values[0]) || 0;
+    } else if (parsed.method === 'orderAsc') {
+      orderAttr = parsed.attribute;
     } else {
       throw new Error(`unsupported query method: ${parsed.method}`);
     }
   }
-  return out.slice(0, limit);
+  if (orderAttr) out = [...out].sort((a, b) => String(a[orderAttr]).localeCompare(String(b[orderAttr])));
+  return out.slice(offset, offset + limit);
 }
 
 function jsonResponse(status, data) {
@@ -198,6 +211,13 @@ function fakeAppwrite(method, url, parsedBody, headers) {
         const t = tbl(op.tableId);
         if (op.action === 'create') t.set(op.rowId, { $id: op.rowId, ...op.data });
         if (op.action === 'update') t.set(op.rowId, { ...t.get(op.rowId), ...op.data });
+        if (op.action === 'increment') {
+          const cur = t.get(op.rowId);
+          let next = Number(cur[op.column]) + op.value;
+          if (op.max !== undefined) next = Math.min(next, Number(op.max));
+          if (op.min !== undefined) next = Math.max(next, Number(op.min));
+          t.set(op.rowId, { ...cur, [op.column]: next });
+        }
         if (op.action === 'delete') t.delete(op.rowId);
       }
       return jsonResponse(200, { $id: txnRoute[1], status: 'committed' });
@@ -223,12 +243,37 @@ function fakeAppwrite(method, url, parsedBody, headers) {
     t.set(rowId, rowData);
     return jsonResponse(201, rowData);
   }
+  // Atomic column increment (official endpoint): PATCH .../rows/{rowId}/{column}/increment
+  // Must be matched BEFORE the generic row route, which prefix-matches it.
+  const inc = path.match(/^\/tablesdb\/[^/]+\/tables\/([^/]+)\/rows\/([^/]+)\/([^/]+)\/increment$/);
+  if (inc && method === 'PATCH') {
+    const t = tbl(inc[1]);
+    const cur = t.get(inc[2]);
+    if (!cur) return jsonResponse(404, { error: 'not found' });
+    const tdef = CONTRACT_TABLES.get(inc[1]);
+    if (!tdef || !tdef.columns.some((c) => c.key === inc[3])) return jsonResponse(400, { error: `unknown column ${inc[1]}.${inc[3]}` });
+    if (staging) {
+      openTxns.get(stageTxn).push({ action: 'increment', tableId: inc[1], rowId: inc[2], column: inc[3], value: Number(parsedBody.value) || 0, max: parsedBody.max, min: parsedBody.min });
+      return jsonResponse(200, cur);
+    }
+    if (failPatchFor === inc[1]) return jsonResponse(500, { error: 'injected patch failure' });
+    let next = Number(cur[inc[3]]) + (Number(parsedBody.value) || 0);
+    if (parsedBody.max !== undefined) next = Math.min(next, Number(parsedBody.max));
+    if (parsedBody.min !== undefined) next = Math.max(next, Number(parsedBody.min));
+    const upd = { ...cur, [inc[3]]: next };
+    t.set(inc[2], upd);
+    return jsonResponse(200, upd);
+  }
   const rowPath = path.match(/^\/tablesdb\/[^/]+\/tables\/([^/]+)\/rows\/([^/?]+)/);
   if (rowPath) {
     const t = tbl(rowPath[1]);
     const cur = t.get(rowPath[2]);
     if (!cur) return jsonResponse(404, { error: 'not found' });
-    if (method === 'GET') return jsonResponse(200, cur);
+    if (method === 'GET') {
+      if (failGetStatus && failGetStatus.table === rowPath[1]) return jsonResponse(failGetStatus.status, { error: 'injected read failure' });
+      if (throwOnGetFor === rowPath[1]) throw new Error('read timeout');
+      return jsonResponse(200, cur);
+    }
     if (method === 'PATCH') {
       if (staging) {
         if (throwOnStagedPatch) throw new Error('network interruption');
@@ -253,6 +298,12 @@ function fakeAppwrite(method, url, parsedBody, headers) {
   }
   const list = path.match(/^\/tablesdb\/[^/]+\/tables\/([^/]+)\/rows$/);
   if (list && method === 'GET') {
+    if (failGetStatus && failGetStatus.table === list[1]) return jsonResponse(failGetStatus.status, { error: 'injected read failure' });
+    if (throwOnGetFor === list[1]) throw new Error('read timeout');
+    if (failListOnCall && failListOnCall.table === list[1]) {
+      failListOnCall._seen = (failListOnCall._seen || 0) + 1;
+      if (failListOnCall._seen >= failListOnCall.n) return jsonResponse(failListOnCall.status, { error: 'injected list failure' });
+    }
     const queries = new URL(url).searchParams.getAll('queries[]');
     let rows;
     try {
@@ -318,6 +369,9 @@ function freshWorld() {
   failDeleteFor = null;
   failCreateFor = null;
   failPatchFor = null;
+  failGetStatus = null;
+  throwOnGetFor = null;
+  failListOnCall = null;
   throwOnStagedPatch = false;
   failRollback = false;
   capturedRequests.length = 0;
@@ -1049,14 +1103,166 @@ test('unique-index conflicts are rejected with 409 (nulls never conflict)', asyn
 test('lumi.care reports failure and does not double-apply warmth', async () => {
   seedCouple();
   const before = (await call('lumi.state', 'jwt-a', {})).data.pet.affection;
-  failPatchFor = 'pet_states';
+  forceCommitFailure = true;
   const bad = await call('lumi.care', 'jwt-a', { action: 'water' });
-  failPatchFor = null;
+  forceCommitFailure = false;
   assert.equal(bad.code, 500, 'failed care is not reported as success');
+  const afterFail = (await call('lumi.state', 'jwt-a', {})).data.pet.affection;
+  assert.equal(afterFail, before, 'failed commit applied neither warmth nor timestamps');
   const retry = await call('lumi.care', 'jwt-a', { action: 'water' });
   assert.equal(retry.code, 200);
   assert.equal(retry.data.pet.affection, Math.min(100, before + 4), 'exactly one warmth step applied');
   assert.ok(retry.data.pet.last_watered_at, 'water timestamp stamped');
+});
+
+test('concurrent lumi care applies both increments without lost updates', async () => {
+  seedCouple();
+  const before = (await call('lumi.state', 'jwt-a', {})).data.pet.affection;
+  const [a, b] = await Promise.all([
+    call('lumi.care', 'jwt-a', { action: 'play' }),
+    call('lumi.care', 'jwt-b', { action: 'water' }),
+  ]);
+  assert.equal(a.code, 200, JSON.stringify(a));
+  assert.equal(b.code, 200, JSON.stringify(b));
+  const after = (await call('lumi.state', 'jwt-a', {})).data.pet.affection;
+  assert.equal(after, Math.min(100, before + 8), 'atomic increments: no lost update');
+});
+
+// ---- Read-outcome discrimination (fifth-review P0s) ----------------------------
+
+test('a failed membership lookup fails closed during account deletion (partner_a path)', async () => {
+  seedCouple();
+  failListOnCall = { table: 'couples', status: 500, n: 1 };
+  const r = await call('account.delete', 'jwt-a', {});
+  failListOnCall = null;
+  assert.equal(r.code, 500, 'lookup failure is never reclassified as unpaired');
+  assert.ok(users['user-a'], 'auth credentials preserved');
+  assert.ok(tbl('profiles').get('user-a'), 'profile preserved');
+  assert.equal(tbl('couples').get('couple-1').partner_a_id, 'user-a', 'couple membership preserved');
+  const retry = await call('account.delete', 'jwt-a', {});
+  assert.equal(retry.code, 200, 'retry after the backend recovers completes safely');
+  assert.equal(users['user-a'], undefined);
+  assert.equal(tbl('couples').get('couple-1').partner_a_id ?? null, null);
+});
+
+test('a failed partner_b membership lookup fails closed during account deletion', async () => {
+  seedCouple();
+  // user-b: the partner_a_id query succeeds (empty), the partner_b_id query fails.
+  failListOnCall = { table: 'couples', status: 503, n: 2 };
+  const r = await call('account.delete', 'jwt-b', {});
+  failListOnCall = null;
+  assert.equal(r.code, 500);
+  assert.ok(users['user-b'], 'credentials preserved');
+  assert.equal(tbl('couples').get('couple-1').partner_b_id, 'user-b', 'membership preserved');
+  const retry = await call('account.delete', 'jwt-b', {});
+  assert.equal(retry.code, 200);
+  assert.equal(tbl('couples').get('couple-1').partner_b_id ?? null, null);
+});
+
+test('membership lookup failures also fail closed for regular couple actions', async () => {
+  seedCouple();
+  failListOnCall = { table: 'couples', status: 500, n: 1 };
+  const r = await call('memory.list', 'jwt-a', {});
+  failListOnCall = null;
+  assert.equal(r.code, 500, 'backend failure is an error, not "unpaired 403"');
+});
+
+test('memory.delete distinguishes read failures from genuine deletion', async () => {
+  seedCouple();
+  await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: '2026-10-01' });
+  const id = [...tbl('memories').values()][0].$id;
+  for (const status of [401, 403, 429, 500]) {
+    failGetStatus = { table: 'memories', status };
+    const r = await call('memory.delete', 'jwt-a', { id });
+    failGetStatus = null;
+    assert.equal(r.code, 500, `HTTP ${status} read must not be reported as deleted`);
+    assert.ok(tbl('memories').get(id), 'row intact after failed read');
+  }
+  throwOnGetFor = 'memories';
+  const timeout = await call('memory.delete', 'jwt-a', { id });
+  throwOnGetFor = null;
+  assert.equal(timeout.code, 500, 'read timeout surfaces as an error');
+  assert.ok(tbl('memories').get(id), 'row intact after timeout');
+  const missing = await call('memory.delete', 'jwt-a', { id: 'missing-memory-1' });
+  assert.equal(missing.code, 200, 'genuine 404 is the deliberate idempotent success');
+  assert.equal([...tbl('memories').values()].length, 1, 'nothing was deleted by the 404');
+  const del = await call('memory.delete', 'jwt-a', { id });
+  assert.equal(del.code, 200);
+  assert.equal(tbl('memories').get(id), undefined, 'actual deletion happened');
+});
+
+test('memory.update read failures surface as errors, not 404', async () => {
+  seedCouple();
+  await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: '2026-10-01' });
+  const id = [...tbl('memories').values()][0].$id;
+  failGetStatus = { table: 'memories', status: 500 };
+  const r = await call('memory.update', 'jwt-a', { id, title: 'y' });
+  failGetStatus = null;
+  assert.equal(r.code, 500, 'a 500 read is not "no longer exists"');
+  assert.equal(tbl('memories').get(id).title, 'x', 'nothing changed');
+});
+
+test('verification reads never masquerade as privacy denials', async () => {
+  seedCouple();
+  const letter = (await call('letter.today', 'jwt-a', {})).data.letter;
+  failGetStatus = { table: 'daily_letters', status: 429 };
+  const state = await call('response.state', 'jwt-a', { letter_id: letter.$id });
+  failGetStatus = null;
+  assert.equal(state.code, 500, 'letter read failure is an error, not "not your letter"');
+  await call('response.submit', 'jwt-a', { letter_id: letter.$id, body: 'A' });
+  const respId = [...tbl('responses').values()][0].$id;
+  failGetStatus = { table: 'responses', status: 500 };
+  const react = await call('reaction.set', 'jwt-b', { response_id: respId, kind: 'heart' });
+  failGetStatus = null;
+  assert.equal(react.code, 500, 'response read failure is an error');
+  const adv = (await call('adventure.current', 'jwt-a', {})).data.adventure;
+  failGetStatus = { table: 'weekly_adventures', status: 500 };
+  const part = await call('adventure.part.get', 'jwt-a', { adventure_id: adv.$id });
+  const comp = await call('adventure.complete', 'jwt-a', { adventure_id: adv.$id, entry: 'x' });
+  failGetStatus = null;
+  assert.equal(part.code, 500, 'adventure read failure is an error');
+  assert.equal(comp.code, 500, 'adventure read failure blocks writes too');
+  assert.equal([...tbl('adventure_parts').values()].length, 0, 'no write slipped through');
+});
+
+// ---- Exhaustive export (P1) -----------------------------------------------------
+
+test('account.export paginates past 100 rows per category and excludes other couples', async () => {
+  seedCouple();
+  const pad = (i) => String(i).padStart(3, '0');
+  for (let i = 0; i < 150; i += 1) {
+    const date = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
+    tbl('memories').set(`mem-${pad(i)}`, { $id: `mem-${pad(i)}`, couple_id: 'couple-1', author_id: 'user-a', title: `M${i}`, note: '', memory_date: date, created_at: now() });
+    tbl('mood_check_ins').set(`mood-${pad(i)}`, { $id: `mood-${pad(i)}`, couple_id: 'couple-1', author_id: 'user-a', emoji: 'e', note: '', created_at: now() });
+    tbl('pocket_notes').set(`note-${pad(i)}`, { $id: `note-${pad(i)}`, couple_id: 'couple-1', author_id: 'user-b', body: `N${i}`, created_at: now() });
+    tbl('daily_letters').set(`let-${pad(i)}`, { $id: `let-${pad(i)}`, couple_id: 'couple-1', letter_date: date, question_id: 'q1', question_text: 'Q', category: 'Everyday', created_at: now() });
+    tbl('responses').set(`resp-${pad(i)}`, { $id: `resp-${pad(i)}`, letter_id: `let-${pad(i)}`, author_id: 'user-a', body: `B${i}`, created_at: now() });
+  }
+  tbl('memories').set('foreign-mem', { $id: 'foreign-mem', couple_id: 'couple-other', author_id: 'user-x', title: 'secret', note: '', memory_date: '2026-01-01', created_at: now() });
+  const r = await call('account.export', 'jwt-a', {});
+  assert.equal(r.code, 200, JSON.stringify(r).slice(0, 200));
+  const d = r.data;
+  assert.equal(d.memories.length, 150, 'memories not truncated at 100');
+  assert.equal(d.mood_check_ins.length, 150);
+  assert.equal(d.pocket_notes.length, 150);
+  assert.equal(d.daily_letters.length, 150);
+  assert.equal(d.responses.length, 150);
+  const ids = d.memories.map((m) => m.$id);
+  assert.deepEqual(ids, [...ids].sort(), 'stable deterministic ordering');
+  assert.equal(JSON.stringify(d).includes('couple-other'), false, 'no unrelated couple data');
+  assert.equal(JSON.stringify(d).includes('secret'), false);
+});
+
+// ---- Overflow dates ----------------------------------------------------------------
+
+test('calendar overflow dates are rejected', async () => {
+  seedCouple();
+  for (const bad of ['2026-02-30', '2026-00-10', '2025-02-29']) {
+    const r = await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: bad });
+    assert.equal(r.code, 400, `${bad} must be rejected`);
+  }
+  const ok = await call('memory.create', 'jwt-a', { title: 'x', note: '', memory_date: '2028-02-29' });
+  assert.equal(ok.code, 200, 'real leap day accepted');
 });
 
 test('memory mutations report server failures', async () => {

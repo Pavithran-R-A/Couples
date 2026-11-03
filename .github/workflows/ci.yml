@@ -62,7 +62,7 @@ jobs:
       # against an in-memory Appwrite TablesDB REST mock. Values below are
       # synthetic test placeholders (also in functions/couples-api/.env.test).
       - name: Couples API adversarial tests
-        run: node --test functions/couples-api/test/main.test.mjs
+        run: node --test functions/couples-api/test/main.test.mjs functions/couples-api/test/seed-script.test.mjs
         env:
           APPWRITE_ENDPOINT: https://sgp.cloud.appwrite.io/v1
           APPWRITE_API_KEY: test-server-key

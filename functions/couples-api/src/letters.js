@@ -58,7 +58,12 @@ export const handlers = {
     if (!raw) return fail(res, 400, 'Missing letter.');
     const letterId = safeId(raw, 'letter_id');
     const letter = await getRow('daily_letters', letterId);
-    if (letter.status >= 400 || letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your letter.');
+    // Read outcomes are distinguished: a 404 read denies access (never leak
+    // existence), while backend failures surface as errors — a 429/5xx on
+    // the read must not masquerade as a privacy decision.
+    if (letter.status === 404) return fail(res, 403, 'Not your letter.');
+    if (letter.status >= 400) return fail(res, 500, 'The letter could not be verified.');
+    if (letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your letter.');
     await ensureRevealed(letterId);
     const mine = await listRowsWhere('responses', [['equal', 'letter_id', letterId], ['equal', 'author_id', user.id]], 1);
     const all = await listRowsWhere('responses', [['equal', 'letter_id', letterId]], 2);
@@ -78,7 +83,9 @@ export const handlers = {
     if (!raw) return fail(res, 400, 'Missing letter.');
     const letterId = safeId(raw, 'letter_id');
     const letter = await getRow('daily_letters', letterId);
-    if (letter.status >= 400 || letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your letter.');
+    if (letter.status === 404) return fail(res, 403, 'Not your letter.');
+    if (letter.status >= 400) return fail(res, 500, 'The letter could not be verified.');
+    if (letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your letter.');
     const text = String(body.body || '').trim().slice(0, 4000);
     if (!text) return fail(res, 400, 'The answer is empty.');
     const prior = await listRowsWhere('responses', [['equal', 'letter_id', letterId], ['equal', 'author_id', user.id]], 1);
@@ -102,12 +109,15 @@ export const handlers = {
     const kind = String(body.kind || '');
     if (!['heart', 'smile', 'sparkle'].includes(kind)) return fail(res, 400, 'Unknown reaction.');
     const target = await getRow('responses', responseId);
-    if (target.status >= 400) return fail(res, 404, 'That response no longer exists.');
+    if (target.status === 404) return fail(res, 404, 'That response no longer exists.');
+    if (target.status >= 400) return fail(res, 500, 'The response could not be verified.');
     // Couple ownership: the reaction target must belong to a letter of the
     // caller's own couple — a revealed response id from another couple is
     // still out of reach.
     const letter = await getRow('daily_letters', target.data.letter_id);
-    if (letter.status >= 400 || letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your conversation.');
+    if (letter.status === 404) return fail(res, 403, 'Not your conversation.');
+    if (letter.status >= 400) return fail(res, 500, 'The conversation could not be verified.');
+    if (letter.data.couple_id !== couple.$id) return fail(res, 403, 'Not your conversation.');
     // Reveal is required before reactions; self-heals the stamp if a previous
     // mutual-reveal commit failed, then re-reads the response.
     await ensureRevealed(target.data.letter_id);

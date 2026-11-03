@@ -86,17 +86,25 @@ function headers(withJson) {
 //   get:    GET .../rows/{rowId}  (rowId is the row's $id)
 // The API key acts with admin permissions, so every call site MUST enforce
 // authorization before reaching these helpers.
-export async function api(method, table, rowId, data, txnId) {
+export async function api(method, table, rowId, data, txnId, opts = {}) {
+  // opts.incrementColumn routes to the official atomic increment endpoint:
+  // PATCH .../rows/{rowId}/{column}/increment with body { value, min?, max? }.
   const isCreate = method === 'POST';
-  const target = isCreate
-    ? `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows`
-    : `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows/${safeId(rowId, 'rowId')}`;
+  const base = `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows`;
+  let target;
+  if (isCreate) target = base;
+  else if (opts.incrementColumn) target = `${base}/${safeId(rowId, 'rowId')}/${safeId(opts.incrementColumn, 'column')}/increment`;
+  else target = `${base}/${safeId(rowId, 'rowId')}`;
   // Documented bodies: create { rowId?, data }; update PATCH { data };
-  // delete carries an optional { transactionId } body. Transaction staging
-  // always travels in the request body — there is no transaction header.
+  // increment { value, min?, max? }; delete carries an optional
+  // { transactionId } body. Transaction staging always travels in the
+  // request body — there is no transaction header.
   let body;
   if (isCreate) body = { rowId: rowId ?? 'unique()', data: data ?? {} };
+  else if (opts.incrementColumn) body = { value: data?.value ?? 0 };
   else if (method === 'PATCH' && data !== undefined) body = { data };
+  if (data?.min !== undefined && opts.incrementColumn) body.min = data.min;
+  if (data?.max !== undefined && opts.incrementColumn) body.max = data.max;
   if (txnId) { body = body ?? {}; body.transactionId = txnId; }
   const h = headers(body !== undefined);
   const r = await fetch(target, {
@@ -120,6 +128,14 @@ export function qLimit(n) {
   return JSON.stringify({ method: 'limit', values: [n] });
 }
 
+export function qOffset(n) {
+  return JSON.stringify({ method: 'offset', values: [n] });
+}
+
+export function qOrderAsc(attr) {
+  return JSON.stringify({ method: 'orderAsc', attribute: attr });
+}
+
 export function qEqual(attr, value) {
   // Official Appwrite Query serialization: equal(attribute, value) is
   // JSON.stringify({ method: 'equal', attribute, values: [value] }).
@@ -135,19 +151,48 @@ export function qEqual(attr, value) {
 // Lists rows as a plain array. Failures THROW rather than returning []:
 // an API error or an unexpected 2xx body without a rows array must never
 // masquerade as "no rows" (that would wrongly admit create paths).
-export async function listRowsWhere(table, filters, limit = 100, txnId) {
+export async function listRowsWhere(table, filters, limit = 100, txnId, extraQueries = []) {
   // Documented shape: one queries[] parameter per query string, each
   // individually URI-encoded (Appwrite rejects a JSON-array parameter).
-  const queries = [...filters.map(([, attr, value]) => qEqual(attr, value)), qLimit(limit)];
+  const queries = [...filters.map(([, attr, value]) => qEqual(attr, value)), ...extraQueries, qLimit(limit)];
   const qs = queries.map((q) => `queries[]=${encodeURIComponent(q)}`).join('&');
   const url = `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows?${qs}`;
   const h = headers(false);
   if (txnId) h['X-Appwrite-Transaction-Id'] = txnId;
   const r = await fetch(url, { headers: h });
   const out = await r.json().catch(() => null);
-  if (r.status >= 400) throw new Error(`listRowsWhere ${table}: HTTP ${r.status}`);
+  if (r.status >= 400) {
+    const detail = out ? JSON.stringify(out).slice(0, 200) : 'no body';
+    throw new Error(`listRowsWhere ${table}: HTTP ${r.status} ${detail}`);
+  }
   if (!out || !Array.isArray(out.rows)) throw new Error(`listRowsWhere ${table}: unexpected response shape`);
   return out.rows;
+}
+
+// Exhaustive, stably ordered listing (orderAsc on $id + offset pages) so
+// exports and cleanups see EVERY matching row, not only the first page.
+// A hard page guard bounds runaway loops.
+export async function listAllRows(table, filters, pageSize = 100) {
+  const all = [];
+  for (let page = 0; page < 100; page += 1) {
+    const rows = await listRowsWhere(table, filters, pageSize, undefined, [qOrderAsc('$id'), qOffset(page * pageSize)]);
+    all.push(...rows);
+    if (rows.length < pageSize) return all;
+  }
+  return all;
+}
+
+// Atomic server-side column increment (official endpoint, sdk-for-web
+// tables-db.ts): PATCH .../rows/{rowId}/{column}/increment { value, max? }.
+// Used for Lumi warmth so concurrent care actions cannot lose updates.
+export async function incrementColumn(table, rowId, column, value, { min, max } = {}) {
+  const target = `${ENDPOINT}/tablesdb/${DB}/tables/${table}/rows/${safeId(rowId, 'rowId')}/${safeId(column, 'column')}/increment`;
+  const body = { value };
+  if (min !== undefined) body.min = min;
+  if (max !== undefined) body.max = max;
+  const r = await fetch(target, { method: 'PATCH', headers: headers(true), body: JSON.stringify(body) });
+  const out = await r.json().catch(() => null);
+  return { status: r.status, data: out };
 }
 
 // TablesDB transaction lifecycle — the OFFICIAL API, verified against the
@@ -183,7 +228,7 @@ export async function withTransaction(run) {
   const txnId = created.data?.$id;
   let staged;
   try {
-    staged = await run((method, table, rowId, data) => api(method, table, rowId, data, txnId));
+    staged = await run((method, table, rowId, data, opts) => api(method, table, rowId, data, txnId, opts));
   } catch (e) {
     // A thrown stage (network interruption, unexpected exception) must not
     // leave staged operations dangling: best-effort rollback, then rethrow.
